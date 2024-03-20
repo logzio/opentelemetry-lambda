@@ -1,10 +1,8 @@
 name: "Release Collector Lambda layer"
 
 on:
-  # (Using tag push instead of release to allow filtering by tag prefix.)
-  push:
-    tags:
-      - layer-collector/**
+  release:
+    types: [published]
 
 permissions:
   id-token: write
@@ -29,7 +27,7 @@ jobs:
         run: make -C collector package GOARCH=${{ matrix.architecture }}
       - uses: actions/upload-artifact@v4
         with:
-          name: opentelemetry-collector-layer-${{ matrix.architecture }}.zip
+          name: test-opentelemetry-collector-layer-${{ matrix.architecture }}.zip
           path: ${{ github.workspace }}/collector/build/opentelemetry-collector-layer-${{ matrix.architecture }}.zip
       - name: Save Collector Version
         if: ${{ matrix.architecture == 'amd64' }}
@@ -49,22 +47,22 @@ jobs:
           - amd64
           - arm64
         aws_region:
-          - ap-northeast-1
-          - ap-northeast-2
-          - ap-south-1
-          - ap-southeast-1
-          - ap-southeast-2
-          - ca-central-1
-          - eu-central-1
-          - eu-north-1
-          - eu-west-1
-          - eu-west-2
-          - eu-west-3
-          - sa-east-1
+#          - ap-northeast-1
+#          - ap-northeast-2
+#          - ap-south-1
+#          - ap-southeast-1
+#          - ap-southeast-2
+#          - ca-central-1
+#          - eu-central-1
+#          - eu-north-1
+#          - eu-west-1
+#          - eu-west-2
+#          - eu-west-3
+#          - sa-east-1
           - us-east-1
-          - us-east-2
-          - us-west-1
-          - us-west-2
+#          - us-east-2
+#          - us-west-1
+#          - us-west-2
     with:
       artifact-name: opentelemetry-collector-layer-${{ matrix.architecture }}.zip
       layer-name: opentelemetry-collector
