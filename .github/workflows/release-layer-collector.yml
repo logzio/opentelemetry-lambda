@@ -72,4 +72,5 @@ jobs:
       architecture: ${{ matrix.architecture }}
       release-group: prod
       aws_region: ${{ matrix.aws_region }}
+      runtimes: "nodejs14.x nodejs16.x nodejs18.x java11 python3.8 python3.9 python3.10 python3.11 provided.al2023"
     secrets: inherit
