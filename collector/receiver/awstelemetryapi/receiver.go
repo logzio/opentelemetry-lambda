@@ -93,7 +93,14 @@ func (r *telemetryAPIReceiver) Start(ctx context.Context, host component.Host) e
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", r.httpHandler)
-	r.httpServer = &http.Server{Addr: address, Handler: mux}
+	r.httpServer = &http.Server{
+		Addr:              address,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 
 	go func() {
 		if err := r.httpServer.ListenAndServe(); err != http.ErrServerClosed {
@@ -101,7 +108,6 @@ func (r *telemetryAPIReceiver) Start(ctx context.Context, host component.Host) e
 		}
 	}()
 
-	// Create and use our new client to register and subscribe.
 	apiClient, err := telemetryapi.NewClient(r.logger)
 	if err != nil {
 		return fmt.Errorf("failed to create telemetry api client: %w", err)
