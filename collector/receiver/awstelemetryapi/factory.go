@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
+	"go.uber.org/zap"
 )
 
 const (
@@ -48,12 +49,19 @@ func createTracesReceiver(ctx context.Context, params receiver.Settings, rConf c
 		return nil, errConfigNotTelemetryAPI
 	}
 	r := receivers.GetOrAdd(cfg, func() component.Component {
-		// Use the new constructor name
-		t, _ := newTelemetryAPIReceiver(cfg, params)
+		t, err := newTelemetryAPIReceiver(cfg, params)
+		if err != nil {
+			params.Logger.Error("Failed to create telemetry API receiver", zap.Error(err))
+			return nil
+		}
 		return t
 	})
-	// Use the new struct name for the type assertion
-	r.Unwrap().(*telemetryAPIReceiver).registerTracesConsumer(next)
+	// Safe type assertion with error checking
+	receiver, ok := r.Unwrap().(*telemetryAPIReceiver)
+	if !ok {
+		return nil, errConfigNotTelemetryAPI
+	}
+	receiver.registerTracesConsumer(next)
 	return r, nil
 }
 
@@ -63,10 +71,18 @@ func createLogsReceiver(ctx context.Context, params receiver.Settings, rConf com
 		return nil, errConfigNotTelemetryAPI
 	}
 	r := receivers.GetOrAdd(cfg, func() component.Component {
-		t, _ := newTelemetryAPIReceiver(cfg, params)
+		t, err := newTelemetryAPIReceiver(cfg, params)
+		if err != nil {
+			params.Logger.Error("Failed to create telemetry API receiver", zap.Error(err))
+			return nil
+		}
 		return t
 	})
-	r.Unwrap().(*telemetryAPIReceiver).registerLogsConsumer(next)
+	receiver, ok := r.Unwrap().(*telemetryAPIReceiver)
+	if !ok {
+		return nil, errConfigNotTelemetryAPI
+	}
+	receiver.registerLogsConsumer(next)
 	return r, nil
 }
 
@@ -76,9 +92,17 @@ func createMetricsReceiver(ctx context.Context, params receiver.Settings, rConf 
 		return nil, errConfigNotTelemetryAPI
 	}
 	r := receivers.GetOrAdd(cfg, func() component.Component {
-		t, _ := newTelemetryAPIReceiver(cfg, params)
+		t, err := newTelemetryAPIReceiver(cfg, params)
+		if err != nil {
+			params.Logger.Error("Failed to create telemetry API receiver", zap.Error(err))
+			return nil
+		}
 		return t
 	})
-	r.Unwrap().(*telemetryAPIReceiver).registerMetricsConsumer(next)
+	receiver, ok := r.Unwrap().(*telemetryAPIReceiver)
+	if !ok {
+		return nil, errConfigNotTelemetryAPI
+	}
+	receiver.registerMetricsConsumer(next)
 	return r, nil
 }
