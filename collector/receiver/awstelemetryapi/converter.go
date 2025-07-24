@@ -1,6 +1,7 @@
 package awstelemetryapi
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -36,11 +37,25 @@ func (r *telemetryAPIReceiver) createLogs(e event) (plog.Logs, error) {
 			logRecord.SetSeverityNumber(severityTextToNumber(level))
 			logRecord.SetSeverityText(logRecord.SeverityNumber().String())
 		}
+		if msg, ok := record["message"].(string); ok {
+			logRecord.Body().SetStr(msg)
+		}
 		if reqID, ok := record["requestId"].(string); ok {
 			logRecord.Attributes().PutStr(semconv.AttributeFaaSInvocationID, reqID)
 		}
-		if msg, ok := record["message"].(string); ok {
-			logRecord.Body().SetStr(msg)
+		if traceID, ok := record["trace_id"].(string); ok {
+			if traceBytes, err := hex.DecodeString(traceID); err == nil && len(traceBytes) == 16 {
+				var tid pcommon.TraceID
+				copy(tid[:], traceBytes)
+				logRecord.SetTraceID(tid)
+			}
+		}
+		if spanID, ok := record["span_id"].(string); ok {
+			if spanBytes, err := hex.DecodeString(spanID); err == nil && len(spanBytes) == 8 {
+				var sid pcommon.SpanID
+				copy(sid[:], spanBytes)
+				logRecord.SetSpanID(sid)
+			}
 		}
 	} else if line, ok := e.Record.(string); ok {
 		logRecord.Body().SetStr(line)
@@ -61,25 +76,18 @@ func (r *telemetryAPIReceiver) createMetrics(e event) (pmetric.Metrics, error) {
 	if !ok {
 		return metrics, fmt.Errorf("metric event record is not a map")
 	}
-
-	// The platform.report event contains a 'metrics' object with key-value pairs.
 	metricData, ok := record["metrics"].(map[string]interface{})
 	if !ok {
 		return metrics, fmt.Errorf("metrics field not found in record")
 	}
-
-	// It also contains the 'requestId' for the invocation.
 	reqID, _ := record["requestId"].(string)
-
 	ts := pcommon.NewTimestampFromTime(e.getTime())
 
 	for key, value := range metricData {
 		if val, ok := value.(float64); ok {
-			// Create a new metric for each key-value pair.
 			m := scopeMetrics.Metrics().AppendEmpty()
 			m.SetName(fmt.Sprintf("aws.lambda.%s", key))
 			m.SetUnit("1")
-
 			dp := m.SetEmptyGauge().DataPoints().AppendEmpty()
 			dp.SetTimestamp(ts)
 			dp.SetDoubleValue(val)
@@ -104,7 +112,6 @@ func (r *telemetryAPIReceiver) createInitSpan(e event) (ptrace.Traces, error) {
 	span.SetStartTimestamp(pcommon.NewTimestampFromTime(r.initStartTime))
 	span.SetEndTimestamp(pcommon.NewTimestampFromTime(e.getTime()))
 
-	// Add attributes from the event record for more context.
 	if record, ok := e.Record.(map[string]interface{}); ok {
 		if status, ok := record["status"].(string); ok {
 			span.Attributes().PutStr("aws.lambda.init.status", status)
@@ -131,7 +138,6 @@ func (r *telemetryAPIReceiver) createInvokeSpan(e event, state invocationState) 
 	span.SetStartTimestamp(pcommon.NewTimestampFromTime(state.start))
 	span.SetEndTimestamp(pcommon.NewTimestampFromTime(e.getTime()))
 
-	// Add attributes from the event record for more context.
 	if record, ok := e.Record.(map[string]interface{}); ok {
 		if reqID, ok := record["requestId"].(string); ok {
 			span.Attributes().PutStr(semconv.AttributeFaaSInvocationID, reqID)

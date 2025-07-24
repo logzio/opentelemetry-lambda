@@ -37,6 +37,38 @@ func TestCreateLogs(t *testing.T) {
 	require.Equal(t, "test-req-id-123", val.Str())
 }
 
+func TestCreateLogs_WithTraceAndSpanID(t *testing.T) {
+	r := &telemetryAPIReceiver{resource: pcommon.NewResource()}
+
+	// Test with valid trace and span IDs (32 hex chars for trace, 16 hex chars for span)
+	sampleEvent := event{
+		Time: "2022-10-12T00:03:50.000Z",
+		Type: "function",
+		Record: map[string]interface{}{
+			"timestamp": "2022-10-12T00:03:50.000Z",
+			"level":     "INFO",
+			"requestId": "test-req-id-123",
+			"message":   "Hello world with trace context!",
+			"trace_id":  "80e1afed08e019fc1110464cfa66635c", // 32 hex chars
+			"span_id":   "7a085853722dc6d2",                 // 16 hex chars
+		},
+	}
+
+	logs, err := r.createLogs(sampleEvent)
+	require.NoError(t, err)
+	require.Equal(t, 1, logs.LogRecordCount())
+
+	logRecord := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	require.Equal(t, "Hello world with trace context!", logRecord.Body().Str())
+
+	require.NotEqual(t, pcommon.NewTraceIDEmpty(), logRecord.TraceID())
+
+	require.NotEqual(t, pcommon.NewSpanIDEmpty(), logRecord.SpanID())
+
+	val, _ := logRecord.Attributes().Get(semconv.AttributeFaaSInvocationID)
+	require.Equal(t, "test-req-id-123", val.Str())
+}
+
 func TestCreateMetrics(t *testing.T) {
 	r := &telemetryAPIReceiver{resource: pcommon.NewResource()}
 	sampleRecord := map[string]interface{}{

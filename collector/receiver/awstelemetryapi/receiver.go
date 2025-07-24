@@ -78,6 +78,10 @@ func newTelemetryAPIReceiver(
 		}
 	}
 
+	if envID, ok := os.LookupEnv("LOGZIO_ENV_ID"); ok {
+		r.Attributes().PutStr("env_id", envID)
+	}
+
 	return &telemetryAPIReceiver{
 		config:      cfg,
 		logger:      set.Logger,
