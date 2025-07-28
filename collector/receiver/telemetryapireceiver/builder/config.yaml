@@ -1,0 +1,25 @@
+receivers:
+  telemetryapireceiver:
+    # We can leave the config empty to use the defaults we set in the factory
+
+exporters:
+  debug:
+    verbosity: detailed
+
+processors:
+  batch:
+
+service:
+  pipelines:
+    logs:
+      receivers: [telemetryapireceiver]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [telemetryapireceiver]
+      processors: [batch]
+      exporters: [debug]
+    traces:
+      receivers: [telemetryapireceiver]
+      processors: [batch]
+      exporters: [debug] 

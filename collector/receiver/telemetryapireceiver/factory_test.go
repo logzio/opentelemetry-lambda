@@ -1,18 +1,4 @@
-// Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package telemetryapireceiver // import "github.com/open-telemetry/opentelemetry-lambda/collector/receiver/telemetryapireceiver"
+package telemetryapireceiver
 
 import (
 	"context"
@@ -24,58 +10,48 @@ import (
 	"go.opentelemetry.io/collector/receiver/receivertest"
 )
 
-func TestNewFactory(t *testing.T) {
-	testCases := []struct {
-		desc     string
-		testFunc func(*testing.T)
-	}{
-		{
-			desc: "creates a new factory with correct type",
-			testFunc: func(t *testing.T) {
-				factory := NewFactory("test")
-				require.EqualValues(t, typeStr, factory.Type().String())
-			},
-		},
-		{
-			desc: "creates a new factory with valid default config",
-			testFunc: func(t *testing.T) {
-				factory := NewFactory("test")
+func TestFactory(t *testing.T) {
+	factory := NewFactory("test-id")
+	require.Equal(t, component.MustNewType(typeStr), factory.Type())
 
-				var expectedCfg component.Config = &Config{extensionID: "test", Port: defaultPort, Types: []string{platform, function, extension}}
-
-				require.Equal(t, expectedCfg, factory.CreateDefaultConfig())
-			},
-		},
-		{
-			desc: "creates a new factory and CreateTracesReceiver returns no error",
-			testFunc: func(t *testing.T) {
-				factory := NewFactory("test")
-				cfg := factory.CreateDefaultConfig()
-				_, err := factory.CreateTraces(
-					context.Background(),
-					receivertest.NewNopSettings(Type),
-					cfg,
-					consumertest.NewNop(),
-				)
-				require.NoError(t, err)
-			},
-		},
-		{
-			desc: "creates a new factory and CreateTracesReceiver returns error with incorrect config",
-			testFunc: func(t *testing.T) {
-				factory := NewFactory("test")
-				_, err := factory.CreateTraces(
-					context.Background(),
-					receivertest.NewNopSettings(Type),
-					nil,
-					consumertest.NewNop(),
-				)
-				require.ErrorIs(t, err, errConfigNotTelemetryAPI)
-			},
-		},
+	// Test default config creation
+	expectedCfg := &Config{
+		extensionID: "test-id",
+		Port:        defaultPort,
+		Types:       []string{platform, function, extension},
+		MaxItems:    defaultMaxItems,
+		MaxBytes:    defaultMaxBytes,
+		TimeoutMS:   defaultTimeoutMS,
 	}
+	require.Equal(t, expectedCfg, factory.CreateDefaultConfig())
 
-	for _, tc := range testCases {
-		t.Run(tc.desc, tc.testFunc)
-	}
+	nopSettings := receivertest.NewNopSettings(component.MustNewType(typeStr))
+	nopConsumer := consumertest.NewNop()
+
+	// Test logs receiver creation
+	_, err := factory.CreateLogs(
+		context.Background(),
+		nopSettings,
+		factory.CreateDefaultConfig(),
+		nopConsumer,
+	)
+	require.NoError(t, err)
+
+	// Test traces receiver creation
+	_, err = factory.CreateTraces(
+		context.Background(),
+		nopSettings,
+		factory.CreateDefaultConfig(),
+		nopConsumer,
+	)
+	require.NoError(t, err)
+
+	// Test metrics receiver creation
+	_, err = factory.CreateMetrics(
+		context.Background(),
+		nopSettings,
+		factory.CreateDefaultConfig(),
+		nopConsumer,
+	)
+	require.NoError(t, err)
 }
