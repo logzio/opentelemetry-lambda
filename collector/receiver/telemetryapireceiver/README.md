@@ -44,5 +44,5 @@ receivers:
     timeoutMs: 500
 ```
 
-[beta]: https://www.google.com/search?q=%5Bhttps://github.com/open-telemetry/opentelemetry-collector%23beta%5D\(https://github.com/open-telemetry/opentelemetry-collector%23beta\)
-[extension]: https://www.google.com/search?q=%5Bhttps://github.com/open-telemetry/opentelemetry-lambda/collector%5D\(https://github.com/open-telemetry/opentelemetry-lambda/collector\)
+[beta]: https://github.com/open-telemetry/opentelemetry-collector#beta
+[extension]: https://github.com/open-telemetry/opentelemetry-lambda/tree/main/collector
