@@ -1,32 +1,32 @@
-telemetryapireceiver:
-telemetryapireceiver/1:
+telemetryapi:
+telemetryapi/1:
   port: 12345
-telemetryapireceiver/2:
+telemetryapi/2:
   port: 12345
   types: ["platform"]
-telemetryapireceiver/3:
+telemetryapi/3:
   port: 12345
   types: ["function"]
-telemetryapireceiver/4:
+telemetryapi/4:
   port: 12345
   types: ["extension"]
-telemetryapireceiver/5:
+telemetryapi/5:
   port: 12345
   types: ["platform", "function"]
-telemetryapireceiver/6:
+telemetryapi/6:
   port: 12345
   types: ["platform", "extension"]
-telemetryapireceiver/7:
+telemetryapi/7:
   port: 12345
   types: ["function", "extension"]
-telemetryapireceiver/8:
+telemetryapi/8:
   port: 12345
   types: []
-telemetryapireceiver/9:
+telemetryapi/9:
   port: 12345
   types:
     - function
     - extension
-telemetryapireceiver/10:
+telemetryapi/10:
   port: 12345
   types: [function, extension]
