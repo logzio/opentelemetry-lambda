@@ -92,14 +92,9 @@ func Components(extensionID string) (otelcol.Factories, error) {
 		errs = append(errs, err)
 	}
 
-	connectors, err := connector.MakeFactoryMap(
+	connectors, err := otelcol.MakeFactoryMap[connector.Factory](
 		spanmetricsconnector.NewFactory(),
 	)
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	err = featuregate.GlobalRegistry().Set("connector.spanmetrics.legacyMetricNames", true)
 	if err != nil {
 		errs = append(errs, err)
 	}
