@@ -2,7 +2,7 @@
 
 | Status                   |                         |
 | ------------------------ |-------------------------|
-| Stability                | [beta][beta]            |
+| Stability                | [alpha][alpha]            |
 | Supported pipeline types | traces, logs, metrics   |
 | Distributions            | [extension][extension]  |
 
@@ -44,5 +44,5 @@ receivers:
     timeoutMs: 500
 ```
 
-[beta]: https://github.com/open-telemetry/opentelemetry-collector#beta
+[alpha]: https://github.com/open-telemetry/opentelemetry-collector#alpha
 [extension]: https://github.com/open-telemetry/opentelemetry-lambda/tree/main/collector

@@ -13,7 +13,7 @@ import (
 
 const (
 	typeStr          = "telemetryapireceiver"
-	stability        = component.StabilityLevelBeta
+	stability        = component.StabilityLevelDevelopment
 	platform         = "platform"
 	function         = "function"
 	extension        = "extension"
@@ -25,7 +25,6 @@ const (
 
 var (
 	Type                     = component.MustNewType(typeStr)
-	receivers                = sharedcomponent.NewSharedComponents()
 	errConfigNotTelemetryAPI = errors.New("config was not a Telemetry API receiver config")
 )
 
@@ -100,3 +99,5 @@ func getOrCreateReceiver(params receiver.Settings, rConf component.Config) (*sha
 
 	return shared, nil
 }
+
+var receivers = sharedcomponent.NewSharedComponents()

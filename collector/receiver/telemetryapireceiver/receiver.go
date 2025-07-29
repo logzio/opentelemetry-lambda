@@ -33,7 +33,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const scopeName = "github.com/logzio/otel-telemetryapireceiver-receiver"
+const scopeName = "github.com/open-telemetry/opentelemetry-lambda/collector/receiver/telemetryapireceiver"
 
 type invocationState struct {
 	start time.Time
@@ -62,7 +62,7 @@ func newTelemetryAPIReceiver(
 	envResourceMap := map[string]string{
 		"AWS_LAMBDA_FUNCTION_MEMORY_SIZE": semconv.AttributeFaaSMaxMemory,
 		"AWS_LAMBDA_FUNCTION_VERSION":     semconv.AttributeFaaSVersion,
-		"AWS_REGION":                      semconv.AttributeCloudRegion,
+		"AWS_REGION":                      semconv.AttributeFaaSInvokedRegion,
 	}
 	r := pcommon.NewResource()
 	r.Attributes().PutStr(semconv.AttributeCloudProvider, semconv.AttributeCloudProviderAWS)
@@ -72,6 +72,11 @@ func newTelemetryAPIReceiver(
 	} else {
 		r.Attributes().PutStr(semconv.AttributeServiceName, "unknown_service")
 	}
+
+	if val, ok := os.LookupEnv("OTEL_SERVICE_NAME"); ok {
+		r.Attributes().PutStr(semconv.AttributeServiceName, val)
+	}
+
 	for env, resourceAttribute := range envResourceMap {
 		if val, ok := os.LookupEnv(env); ok {
 			r.Attributes().PutStr(resourceAttribute, val)
