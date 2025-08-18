@@ -171,7 +171,7 @@ jobs:
           )
 
           var (
-            totalBudgetSeconds = 500
+            totalBudgetSeconds = 400
             testStartTime      time.Time
             timeSpentMetrics   time.Duration
             timeSpentLogs      time.Duration
@@ -192,8 +192,8 @@ jobs:
           }
 
           func getDynamicRetryConfig(testType string) (maxRetries int, retryDelay time.Duration) {
-            defaultMaxRetries := 50
-            defaultRetryDelay := 10 * time.Second
+            defaultMaxRetries := 30
+            defaultRetryDelay := 5 * time.Second
 
             remainingBudget := getRemainingBudgetSeconds()
             retryDelay = defaultRetryDelay
@@ -542,10 +542,11 @@ jobs:
 
             expectedServiceName := os.Getenv("EXPECTED_SERVICE_NAME")
             require.NotEmpty(t, expectedServiceName, "EXPECTED_SERVICE_NAME environment variable must be set for log tests")
+            expectedFaasName := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME")
+            require.NotEmpty(t, expectedFaasName, "EXPECTED_LAMBDA_FUNCTION_NAME must be set for log tests")
 
-            e2eLogger.Infof("Expecting logs with service_name: %s and environment: %s", expectedServiceName, e2eTestEnvironmentLabel)
-
-            baseQuery := fmt.Sprintf(`environment:"%s" AND service_name:"%s"`, e2eTestEnvironmentLabel, expectedServiceName)
+            // Query for OTLP logs produced by our Lambda function and extension
+            baseQuery := fmt.Sprintf(`type:"http-otlp-logs" AND environment:"%s" AND faas.name:"%s"`, e2eTestEnvironmentLabel, expectedFaasName)
 
             logChecks := []struct {
               name        string
@@ -553,21 +554,23 @@ jobs:
               assertion   func(t *testing.T, hits []map[string]interface{})
             }{
               {
-                name:        "extension_startup_log",
-                mustContain: `"Launching OpenTelemetry Lambda extension"`,
+                name:        "extension_subscription_log",
+                mustContain: `"Successfully subscribed to Telemetry API" AND lambda.event.type:"extension"`,
                 assertion: func(t *testing.T, hits []map[string]interface{}) {
-                  assert.GreaterOrEqual(t, len(hits), 1, "Should find at least one extension startup log")
+                  assert.GreaterOrEqual(t, len(hits), 1, "Should find telemetry API subscription log from extension")
+                  hit := hits[0]
+                  assert.Equal(t, "extension", hit["lambda.event.type"])
+                  assert.Equal(t, expectedFaasName, hit["faas.name"])
                 },
               },
               {
                 name:        "function_invocation_log",
-                mustContain: `"📍 Lambda invocation started"`,
+                mustContain: `"📍 Lambda invocation started" AND lambda.event.type:"function"`,
                 assertion: func(t *testing.T, hits []map[string]interface{}) {
                   assert.GreaterOrEqual(t, len(hits), 1, "Should find function invocation start log")
                   hit := hits[0]
-                  assert.NotEmpty(t, hit["faas.instance"], "Log should have faas.instance (Lambda Request ID)")
-                  assert.Equal(t, expectedServiceName, hit["service_name"])
-                  assert.Equal(t, e2eTestEnvironmentLabel, hit["environment"])
+                  assert.Equal(t, "function", hit["lambda.event.type"])
+                  assert.Equal(t, expectedFaasName, hit["faas.name"])
                 },
               },
             }
@@ -706,29 +709,38 @@ jobs:
             expectedServiceName := os.Getenv("EXPECTED_SERVICE_NAME")
             require.NotEmpty(t, expectedServiceName, "EXPECTED_SERVICE_NAME must be set")
 
-            e2eLogger.Infof("Expecting traces with faas.name: %s, service.name: %s, environment: %s", expectedFaasName, expectedServiceName, e2eTestEnvironmentLabel)
+            e2eLogger.Infof("Expecting traces for service: %s, function: %s, environment: %s", expectedServiceName, expectedFaasName, e2eTestEnvironmentLabel)
 
-            query := fmt.Sprintf(`type:jaegerSpan AND process.serviceName:"%s" AND process.tag.faas@name:"%s" AND process.tag.deployment@environment:"%s"`, expectedServiceName, expectedFaasName, e2eTestEnvironmentLabel)
-            e2eLogger.Infof("Querying for traces with full time budget: %s", query)
+            // Base query for traces linked to our function and environment
+            baseQuery := fmt.Sprintf(`type:jaegerSpan AND process.serviceName:"%s" AND process.tag.faas@name:"%s" AND process.tag.deployment@environment:"%s"`, expectedServiceName, expectedFaasName, e2eTestEnvironmentLabel)
 
-            traceResponse, err := fetchLogzSearchAPI(t, tracesQueryKey, logzioAPIURL, query, "traces")
+            // Check for platform.invoke span (language-agnostic)
+            platformQuery := fmt.Sprintf(`%s AND operationName:"platform.invoke"`, baseQuery)
+            e2eLogger.Infof("Querying for platform span: %s", platformQuery)
+            platformResp, err := fetchLogzSearchAPI(t, tracesQueryKey, logzioAPIURL, platformQuery, "traces")
+            require.NoError(t, err, "Failed to find platform.invoke span")
+            require.NotNil(t, platformResp)
+            require.GreaterOrEqual(t, platformResp.getTotalHits(), 1, "Should find platform.invoke span")
 
-            require.NoError(t, err, "Failed to find any matching traces after all retries.")
-            require.NotNil(t, traceResponse, "Trace response should not be nil if no error was returned")
-            require.GreaterOrEqual(t, traceResponse.getTotalHits(), 1, "Should find at least one trace matching the query.")
+            // Check for any server span from the function (without handler name to be language-agnostic)
+            serverSpanQuery := fmt.Sprintf(`%s AND "JaegerTag.span@kind":"server"`, baseQuery)
+            e2eLogger.Infof("Querying for server span: %s", serverSpanQuery)
+            serverResp, err := fetchLogzSearchAPI(t, tracesQueryKey, logzioAPIURL, serverSpanQuery, "traces")
+            require.NoError(t, err, "Failed to find server span")
+            require.NotNil(t, serverResp)
+            require.GreaterOrEqual(t, serverResp.getTotalHits(), 1, "Should find at least one server span")
 
-            e2eLogger.Info("✅ Found traces! Validating content of the first trace...")
-
-            hit := traceResponse.Hits.Hits[0].Source
+            // Log a sample for debugging
+            hit := serverResp.Hits.Hits[0].Source
             logSample, _ := json.Marshal(hit)
+            e2eLogger.Debugf("Sample server span: %s", string(logSample))
 
-            e2eLogger.Debugf("Sample trace for validation: %s", string(logSample))
-
+            // Basic content checks
             assert.Equal(t, expectedServiceName, getNestedValue(hit, "process", "serviceName"))
             assert.Equal(t, expectedFaasName, getNestedValue(hit, "process", "tag", "faas@name"))
             assert.Equal(t, e2eTestEnvironmentLabel, getNestedValue(hit, "process", "tag", "deployment@environment"))
 
-            e2eLogger.Info("E2E Trace Test Completed Successfully.")
+            e2eLogger.Info("E2E Trace Tests Completed Successfully.")
           }
           EOF
           # Runner
@@ -743,8 +755,8 @@ jobs:
           )
 
           func TestE2ERunner(t *testing.T) {
-            e2eLogger.Info("E2E Test Runner: Waiting 180 seconds for initial Lambda execution and data ingestion before starting tests...")
-            time.Sleep(180 * time.Second)
+            e2eLogger.Info("E2E Test Runner: Waiting 60 seconds for initial Lambda execution and data ingestion before starting tests...")
+            time.Sleep(60 * time.Second)
 
             initTimeTracking()
             e2eLogger.Infof("E2E Test Runner starting with a total budget of %d seconds.", totalBudgetSeconds)
