@@ -193,7 +193,7 @@ jobs:
 
           func getDynamicRetryConfig(testType string) (maxRetries int, retryDelay time.Duration) {
             defaultMaxRetries := 30
-            defaultRetryDelay := 5 * time.Second
+            defaultRetryDelay := 10 * time.Second
 
             remainingBudget := getRemainingBudgetSeconds()
             retryDelay = defaultRetryDelay
@@ -756,7 +756,7 @@ jobs:
 
           func TestE2ERunner(t *testing.T) {
             e2eLogger.Info("E2E Test Runner: Waiting 60 seconds for initial Lambda execution and data ingestion before starting tests...")
-            time.Sleep(60 * time.Second)
+            time.Sleep(180 * time.Second)
 
             initTimeTracking()
             e2eLogger.Infof("E2E Test Runner starting with a total budget of %d seconds.", totalBudgetSeconds)
