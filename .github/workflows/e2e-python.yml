@@ -789,6 +789,12 @@ jobs:
           }
           EOF
 
+      - name: Download Go dependencies
+        run: |
+          cd e2e/python
+          go mod tidy
+          go mod download
+
       - name: Run E2E verification tests
         env:
           LOGZIO_API_KEY: ${{ secrets.LOGZIO_API_KEY }}
