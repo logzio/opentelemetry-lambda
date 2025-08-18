@@ -738,7 +738,6 @@ jobs:
           package e2e
 
           import (
-            "fmt"
             "testing"
             "time"
           )
