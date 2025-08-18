@@ -543,7 +543,7 @@ jobs:
             expectedServiceName := os.Getenv("EXPECTED_SERVICE_NAME")
             require.NotEmpty(t, expectedServiceName, "EXPECTED_SERVICE_NAME environment variable must be set for log tests")
 
-            e2eLogger.Infof("Expecting logs with service_name: %s and environment: %s", expectedServiceName, e2eTestEnvironmentLabel)
+            e2eLogger.Infof("Expecting logs with service.name: %s", expectedServiceName)
 
             baseQuery := fmt.Sprintf(`service.name:"%s"`, expectedServiceName)
 
