@@ -96,13 +96,61 @@ jobs:
         run: |
           echo "e2e_label=python-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
+      - name: Check Lambda function status
+        run: |
+          echo "Checking function configuration..."
+          if aws lambda get-function --function-name "${FUNCTION_NAME}" --query 'Configuration.{FunctionName:FunctionName,Role:Role,Runtime:Runtime,Handler:Handler}' --output table; then
+            echo "✅ Function '${FUNCTION_NAME}' exists and is accessible"
+            
+            # Get the role ARN and verify it
+            ROLE_ARN=$(aws lambda get-function --function-name "${FUNCTION_NAME}" --query 'Configuration.Role' --output text)
+            echo "Function execution role: $ROLE_ARN"
+            
+            # Check if the role exists and has proper trust relationship
+            if aws iam get-role --role-name $(echo "$ROLE_ARN" | cut -d'/' -f2) --query 'Role.{RoleName:RoleName,Arn:Arn}' --output table; then
+              echo "✅ Execution role exists"
+              
+              # Check trust relationship
+              if aws iam get-role --role-name $(echo "$ROLE_ARN" | cut -d'/' -f2) --query 'Role.AssumeRolePolicyDocument' --output json | grep -q "lambda.amazonaws.com"; then
+                echo "✅ Role has proper trust relationship for Lambda"
+              else
+                echo "❌ Role missing trust relationship for Lambda service"
+                echo "The role must have a trust policy that allows lambda.amazonaws.com to assume it"
+              fi
+            else
+              echo "❌ Execution role does not exist or is not accessible"
+            fi
+          else
+            echo "❌ Function '${FUNCTION_NAME}' is not accessible or does not exist"
+            echo "This E2E test requires a pre-configured Lambda function named '${FUNCTION_NAME}'"
+            echo "Please ensure the function exists and has a valid execution role that Lambda can assume"
+            echo ""
+            echo "To create the function, you can use:"
+            echo "aws lambda create-function \\"
+            echo "  --function-name ${FUNCTION_NAME} \\"
+            echo "  --runtime python3.11 \\"
+            echo "  --role <your-execution-role-arn> \\"
+            echo "  --handler index.handler \\"
+            echo "  --zip-file fileb://<your-function-code.zip>"
+            exit 1
+          fi
+
       - name: Update Lambda configuration
         run: |
-          aws lambda update-function-configuration \
+          echo "Updating function configuration..."
+          # Try to update the function configuration
+          if aws lambda update-function-configuration \
             --function-name "${FUNCTION_NAME}" \
             --layers "${{ steps.publish.outputs.layer_arn }}" \
-            --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
-          aws lambda wait function-updated --function-name "${FUNCTION_NAME}"
+            --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"; then
+            echo "Function configuration updated successfully"
+            aws lambda wait function-updated --function-name "${FUNCTION_NAME}"
+          else
+            echo "Failed to update function configuration. This might be due to IAM role issues."
+            echo "Please check that the function '${FUNCTION_NAME}' exists and has a valid execution role."
+            echo "The function execution role must be assumable by Lambda service."
+            exit 1
+          fi
 
       - name: Invoke function twice
         run: |
