@@ -98,12 +98,12 @@ jobs:
 
       - name: Check function exists and get current config
         run: |
-          echo "Checking if function exists..."
-          aws lambda get-function --function-name "${FUNCTION_NAME}" --query 'Configuration.{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Role:Role,State:State}' --output table || {
-            echo "❌ Function ${FUNCTION_NAME} does not exist or is not accessible"
-            echo "Please create the function first or check IAM permissions"
+          echo "Checking if function exists and its current configuration..."
+          aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Role:Role,KMSKeyArn:KMSKeyArn,State:State,LastUpdateStatus:LastUpdateStatus}' --output table || {
+            echo "❌ Function ${FUNCTION_NAME} does not exist or is not accessible."
             exit 1
           }
+  
           
           echo "Current environment variables:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'Environment.Variables' --output json || echo "No environment variables set"
