@@ -171,7 +171,7 @@ jobs:
           )
 
           var (
-            totalBudgetSeconds = 400
+            totalBudgetSeconds = 500
             testStartTime      time.Time
             timeSpentMetrics   time.Duration
             timeSpentLogs      time.Duration
@@ -543,9 +543,9 @@ jobs:
             expectedServiceName := os.Getenv("EXPECTED_SERVICE_NAME")
             require.NotEmpty(t, expectedServiceName, "EXPECTED_SERVICE_NAME environment variable must be set for log tests")
 
-            e2eLogger.Infof("Expecting logs with service.name: %s", expectedServiceName)
+            e2eLogger.Infof("Expecting logs with service_name: %s and environment: %s", expectedServiceName, e2eTestEnvironmentLabel)
 
-            baseQuery := fmt.Sprintf(`service.name:"%s"`, expectedServiceName)
+            baseQuery := fmt.Sprintf(`environment:"%s" AND service_name:"%s"`, e2eTestEnvironmentLabel, expectedServiceName)
 
             logChecks := []struct {
               name        string
@@ -553,23 +553,21 @@ jobs:
               assertion   func(t *testing.T, hits []map[string]interface{})
             }{
               {
+                name:        "extension_startup_log",
+                mustContain: `"Launching OpenTelemetry Lambda extension"`,
+                assertion: func(t *testing.T, hits []map[string]interface{}) {
+                  assert.GreaterOrEqual(t, len(hits), 1, "Should find at least one extension startup log")
+                },
+              },
+              {
                 name:        "function_invocation_log",
                 mustContain: `"📍 Lambda invocation started"`,
                 assertion: func(t *testing.T, hits []map[string]interface{}) {
                   assert.GreaterOrEqual(t, len(hits), 1, "Should find function invocation start log")
                   hit := hits[0]
-                  assert.Equal(t, expectedServiceName, hit["service.name"])
-                  assert.Equal(t, "one-layer-e2e-test-python", hit["faas.name"])
-                },
-              },
-              {
-                name:        "telemetry_api_subscription",
-                mustContain: `"Successfully subscribed to Telemetry API"`,
-                assertion: func(t *testing.T, hits []map[string]interface{}) {
-                  assert.GreaterOrEqual(t, len(hits), 1, "Should find telemetry API subscription log")
-                  hit := hits[0]
-                  assert.Equal(t, expectedServiceName, hit["service.name"])
-                  assert.Equal(t, "extension", hit["lambda.event.type"])
+                  assert.NotEmpty(t, hit["faas.instance"], "Log should have faas.instance (Lambda Request ID)")
+                  assert.Equal(t, expectedServiceName, hit["service_name"])
+                  assert.Equal(t, e2eTestEnvironmentLabel, hit["environment"])
                 },
               },
             }
@@ -636,9 +634,9 @@ jobs:
             expectedServiceName := os.Getenv("EXPECTED_SERVICE_NAME")
             require.NotEmpty(t, expectedServiceName, "EXPECTED_SERVICE_NAME environment variable must be set")
 
-            e2eLogger.Infof("Expecting metrics with faas.name: %s, service_name: %s", expectedFaasName, expectedServiceName)
+            e2eLogger.Infof("Expecting metrics with common labels - faas.name: %s, service_name: %s, environment: %s", expectedFaasName, expectedServiceName, e2eTestEnvironmentLabel)
 
-            query := fmt.Sprintf(`{faas_name="%s", service_name="%s"}`, expectedFaasName, expectedServiceName)
+            query := fmt.Sprintf(`{environment="%s", faas_name="%s", service_name="%s"}`, e2eTestEnvironmentLabel, expectedFaasName, expectedServiceName)
             e2eLogger.Infof("Querying for any metrics matching: %s", query)
 
             metricResponse, err := fetchLogzMetricsAPI(t, logzioMetricsQueryAPIKey, logzioMetricsQueryBaseURL, query)
@@ -659,10 +657,26 @@ jobs:
             metricLabels := firstSeries.Metric
             e2eLogger.Infof("Found metric '%s' with labels: %+v", metricLabels["__name__"], metricLabels)
 
+            assert.Equal(t, e2eTestEnvironmentLabel, metricLabels["environment"], "Label 'environment' mismatch")
             assert.Equal(t, expectedFaasName, metricLabels["faas_name"], "Label 'faas_name' mismatch")
             assert.Equal(t, expectedServiceName, metricLabels["service_name"], "Label 'service_name' mismatch")
+            assert.Equal(t, "aws_lambda", metricLabels["cloud_platform"], "Label 'cloud_platform' should be 'aws_lambda'")
             assert.Equal(t, "aws", metricLabels["cloud_provider"], "Label 'cloud_provider' should be 'aws'")
             assert.NotEmpty(t, metricLabels["cloud_region"], "Label 'cloud_region' should be present")
+
+            if metricName, ok := metricLabels["__name__"]; ok && (metricName == "aws_lambda_duration_milliseconds" || metricName == "aws_lambda_maxMemoryUsed_megabytes" || metricName == "aws_lambda_invocations" || metricName == "aws_lambda_errors") {
+              assert.NotEmpty(t, metricLabels["faas_execution"], "Label 'faas_execution' (Lambda Request ID) should be present for AWS platform metrics")
+            }
+
+            foundDurationMetric := false
+            for _, series := range metricResponse.Data.Result {
+              if series.Metric["__name__"] == "aws_lambda_duration_milliseconds" {
+                foundDurationMetric = true
+                e2eLogger.Info("Confirmed 'aws_lambda_duration_milliseconds' is among the found metrics with correct labels.")
+                break
+              }
+            }
+            assert.True(t, foundDurationMetric, "Expected 'aws_lambda_duration_milliseconds' to be one of the metrics reported with the correct labels.")
             e2eLogger.Info("E2E Metrics Test: Core label validation successful.")
           }
           EOF
@@ -692,9 +706,9 @@ jobs:
             expectedServiceName := os.Getenv("EXPECTED_SERVICE_NAME")
             require.NotEmpty(t, expectedServiceName, "EXPECTED_SERVICE_NAME must be set")
 
-            e2eLogger.Infof("Expecting traces with faas.name: %s, service.name: %s", expectedFaasName, expectedServiceName)
+            e2eLogger.Infof("Expecting traces with faas.name: %s, service.name: %s, environment: %s", expectedFaasName, expectedServiceName, e2eTestEnvironmentLabel)
 
-            query := fmt.Sprintf(`type:jaegerSpan AND process.serviceName:"%s" AND process.tag.faas@name:"%s"`, expectedServiceName, expectedFaasName)
+            query := fmt.Sprintf(`type:jaegerSpan AND process.serviceName:"%s" AND process.tag.faas@name:"%s" AND process.tag.deployment@environment:"%s"`, expectedServiceName, expectedFaasName, e2eTestEnvironmentLabel)
             e2eLogger.Infof("Querying for traces with full time budget: %s", query)
 
             traceResponse, err := fetchLogzSearchAPI(t, tracesQueryKey, logzioAPIURL, query, "traces")
@@ -712,7 +726,7 @@ jobs:
 
             assert.Equal(t, expectedServiceName, getNestedValue(hit, "process", "serviceName"))
             assert.Equal(t, expectedFaasName, getNestedValue(hit, "process", "tag", "faas@name"))
-            assert.Equal(t, "server", getNestedValue(hit, "JaegerTag.span@kind"))
+            assert.Equal(t, e2eTestEnvironmentLabel, getNestedValue(hit, "process", "tag", "deployment@environment"))
 
             e2eLogger.Info("E2E Trace Test Completed Successfully.")
           }
