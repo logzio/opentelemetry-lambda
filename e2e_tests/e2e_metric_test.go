@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -23,8 +24,7 @@ func TestE2EMetrics(t *testing.T) {
 
 	e2eLogger.Infof("Expecting metrics with common labels - faas.name: %s, service_name: %s, environment: %s", expectedFaasName, expectedServiceName, e2eTestEnvironmentLabel)
 
-	// Note: The environment label will be dynamic (python-e2e-{GITHUB_RUN_ID}), but we'll still validate it in assertions
-	query := `{faas_name="one-layer-e2e-test-python", service_name="logzio-e2e-python-service"}`
+	query := fmt.Sprintf(`{environment="%s", faas_name="%s", service_name="%s"}`, e2eTestEnvironmentLabel, expectedFaasName, expectedServiceName)
 	e2eLogger.Infof("Querying for any metrics matching: %s", query)
 
 	metricResponse, err := fetchLogzMetricsAPI(t, logzioMetricsQueryAPIKey, logzioMetricsQueryBaseURL, query)
