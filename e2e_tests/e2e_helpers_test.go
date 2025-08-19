@@ -157,18 +157,17 @@ func skipIfEnvVarsMissing(t *testing.T, testName string) {
 }
 
 type logzioSearchQueryBody struct {
-	Query struct {
-		QueryString struct {
-			Query                string `json:"query"`
-			AllowLeadingWildcard bool   `json:"allow_leading_wildcard"`
-		} `json:"query_string"`
-	} `json:"query"`
-	From   int      `json:"from"`
-	Size   int      `json:"size"`
-	Sort   []string `json:"sort,omitempty"`
-	Source struct {
-		Includes []string `json:"includes"`
-	} `json:"_source"`
+	Query          map[string]interface{} `json:"query"`
+	From           int                    `json:"from"`
+	Size           int                    `json:"size"`
+	Sort           []interface{}          `json:"sort"`
+	Source         interface{}            `json:"_source"`
+	PostFilter     interface{}            `json:"post_filter,omitempty"`
+	DocvalueFields []string               `json:"docvalue_fields"`
+	Version        bool                   `json:"version"`
+	StoredFields   []string               `json:"stored_fields"`
+	Highlight      map[string]interface{} `json:"highlight"`
+	Aggregations   map[string]interface{} `json:"aggregations,omitempty"`
 }
 
 type logzioSearchResponse struct {
@@ -210,23 +209,46 @@ func fetchLogzSearchAPI(t *testing.T, apiKey, queryBaseAPIURL, luceneQuery strin
 func fetchLogzSearchAPIWithRetries(t *testing.T, apiKey, queryBaseAPIURL, luceneQuery string, maxRetries int, retryDelay time.Duration) (*logzioSearchResponse, error) {
 	searchAPIEndpoint := fmt.Sprintf("%s/v1/search", strings.TrimSuffix(queryBaseAPIURL, "/"))
 
-	// According to Logz.io API docs, by default it searches today and yesterday (UTC)
-	// We can optionally add timestamp filters, but let's keep it simple for now
+	// Build request body per Logz.io Search API example
 	queryBodyMap := logzioSearchQueryBody{
-		From: 0,
-		Size: 100,
-		Sort: []string{"@timestamp:desc"},
-		Source: struct {
-			Includes []string `json:"includes"`
-		}{
-			Includes: []string{"@timestamp", "message", "faas.name", "process.serviceName", "process.tag.faas@name", "deployment.environment"},
+		Query: map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []interface{}{
+					map[string]interface{}{
+						"query_string": map[string]interface{}{
+							"query":                  luceneQuery,
+							"allow_leading_wildcard": false,
+						},
+					},
+					map[string]interface{}{
+						"range": map[string]interface{}{
+							"@timestamp": map[string]interface{}{
+								"gte": "now-5m",
+								"lte": "now",
+							},
+						},
+					},
+				},
+			},
+		},
+		From:           0,
+		Size:           100,
+		Sort:           []interface{}{map[string]interface{}{}},
+		Source:         false,
+		PostFilter:     nil,
+		DocvalueFields: []string{"@timestamp"},
+		Version:        true,
+		StoredFields:   []string{"*"},
+		Highlight:      map[string]interface{}{},
+		Aggregations: map[string]interface{}{
+			"byType": map[string]interface{}{
+				"terms": map[string]interface{}{
+					"field": "type",
+					"size":  5,
+				},
+			},
 		},
 	}
-
-	// Set the query string with required parameters
-	queryBodyMap.Query.QueryString.Query = luceneQuery
-	queryBodyMap.Query.QueryString.AllowLeadingWildcard = false
-
 	queryBytes, err := json.Marshal(queryBodyMap)
 	require.NoError(t, err)
 
@@ -240,6 +262,7 @@ func fetchLogzSearchAPIWithRetries(t *testing.T, apiKey, queryBaseAPIURL, lucene
 		req, err := http.NewRequest("POST", searchAPIEndpoint, bytes.NewBuffer(queryBytes))
 		require.NoError(t, err)
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
 		req.Header.Set("X-API-TOKEN", apiKey)
 		client := &http.Client{Timeout: apiTimeout}
 		resp, err := client.Do(req)
