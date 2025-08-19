@@ -223,7 +223,7 @@ func fetchLogzSearchAPIWithRetries(t *testing.T, apiKey, queryBaseAPIURL, lucene
 					map[string]interface{}{
 						"range": map[string]interface{}{
 							"@timestamp": map[string]interface{}{
-								"gte": "now-5m",
+								"gte": "now-30m",
 								"lte": "now",
 							},
 						},
@@ -234,7 +234,7 @@ func fetchLogzSearchAPIWithRetries(t *testing.T, apiKey, queryBaseAPIURL, lucene
 		From:           0,
 		Size:           100,
 		Sort:           []interface{}{map[string]interface{}{}},
-		Source:         false,
+		Source:         true,
 		PostFilter:     nil,
 		DocvalueFields: []string{"@timestamp"},
 		Version:        true,

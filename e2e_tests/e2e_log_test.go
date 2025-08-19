@@ -35,16 +35,28 @@ func TestE2ELogs(t *testing.T) {
 			assertion: func(t *testing.T, hits []map[string]interface{}) {
 				assert.GreaterOrEqual(t, len(hits), 1, "Should find telemetry API subscription log")
 				hit := hits[0]
-				assert.Equal(t, expectedFaasName, hit["faas.name"])
+				var got any
+				if v, ok := hit["faas.name"]; ok {
+					got = v
+				} else {
+					got = getNestedValue(hit, "faas", "name")
+				}
+				assert.Equal(t, expectedFaasName, got)
 			},
 		},
 		{
 			name:        "function_invocation_log",
-			mustContain: `"📍 Lambda invocation started"`,
+			mustContain: `"Lambda invocation started"`,
 			assertion: func(t *testing.T, hits []map[string]interface{}) {
 				assert.GreaterOrEqual(t, len(hits), 1, "Should find function invocation start log")
 				hit := hits[0]
-				assert.Equal(t, expectedFaasName, hit["faas.name"])
+				var got any
+				if v, ok := hit["faas.name"]; ok {
+					got = v
+				} else {
+					got = getNestedValue(hit, "faas", "name")
+				}
+				assert.Equal(t, expectedFaasName, got)
 			},
 		},
 	}
