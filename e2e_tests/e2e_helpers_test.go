@@ -157,15 +157,18 @@ func skipIfEnvVarsMissing(t *testing.T, testName string) {
 }
 
 type logzioSearchQueryBody struct {
-	Query          map[string]interface{} `json:"query"`
-	From           int                    `json:"from"`
-	Size           int                    `json:"size"`
-	Sort           []interface{}          `json:"sort"`
-	Source         bool                   `json:"_source"`
-	DocvalueFields []string               `json:"docvalue_fields"`
-	Version        bool                   `json:"version"`
-	StoredFields   []string               `json:"stored_fields"`
-	Highlight      map[string]interface{} `json:"highlight"`
+	Query struct {
+		QueryString struct {
+			Query                string `json:"query"`
+			AllowLeadingWildcard bool   `json:"allow_leading_wildcard"`
+		} `json:"query_string"`
+	} `json:"query"`
+	From   int      `json:"from"`
+	Size   int      `json:"size"`
+	Sort   []string `json:"sort,omitempty"`
+	Source struct {
+		Includes []string `json:"includes"`
+	} `json:"_source"`
 }
 
 type logzioSearchResponse struct {
@@ -206,50 +209,36 @@ func fetchLogzSearchAPI(t *testing.T, apiKey, queryBaseAPIURL, luceneQuery strin
 
 func fetchLogzSearchAPIWithRetries(t *testing.T, apiKey, queryBaseAPIURL, luceneQuery string, maxRetries int, retryDelay time.Duration) (*logzioSearchResponse, error) {
 	searchAPIEndpoint := fmt.Sprintf("%s/v1/search", strings.TrimSuffix(queryBaseAPIURL, "/"))
-	searchEndTime := time.Now().UTC()
-	searchStartTime := testStartTime.UTC().Add(-1 * time.Minute)
 
-	timestampGte := searchStartTime.Format(time.RFC3339Nano)
-	timestampLte := searchEndTime.Format(time.RFC3339Nano)
-
+	// According to Logz.io API docs, by default it searches today and yesterday (UTC)
+	// We can optionally add timestamp filters, but let's keep it simple for now
 	queryBodyMap := logzioSearchQueryBody{
-		Query: map[string]interface{}{
-			"bool": map[string]interface{}{
-				"must": []map[string]interface{}{
-					{
-						"query_string": map[string]interface{}{
-							"query": luceneQuery,
-						},
-					},
-					{
-						"range": map[string]interface{}{
-							"@timestamp": map[string]interface{}{
-								"gte": timestampGte,
-								"lte": timestampLte,
-							},
-						},
-					},
-				},
-			},
+		From: 0,
+		Size: 100,
+		Sort: []string{"@timestamp:desc"},
+		Source: struct {
+			Includes []string `json:"includes"`
+		}{
+			Includes: []string{"@timestamp", "message", "faas.name", "process.serviceName", "process.tag.faas@name", "deployment.environment"},
 		},
-		From:           0,
-		Size:           100,
-		Sort:           []interface{}{map[string]string{"@timestamp": "desc"}},
-		Source:         true,
-		DocvalueFields: []string{"@timestamp"},
-		Version:        true,
-		StoredFields:   []string{"*"},
-		Highlight:      map[string]interface{}{},
 	}
+
+	// Set the query string with required parameters
+	queryBodyMap.Query.QueryString.Query = luceneQuery
+	queryBodyMap.Query.QueryString.AllowLeadingWildcard = false
+
 	queryBytes, err := json.Marshal(queryBodyMap)
 	require.NoError(t, err)
+
+	// Debug: Log the actual JSON query being sent
+	e2eLogger.Debugf("Logz.io search query JSON: %s", string(queryBytes))
+
 	var lastErr error
 
 	for i := 0; i < maxRetries; i++ {
 		e2eLogger.Infof("Attempt %d/%d to fetch Logz.io search results (Query: %s)...", i+1, maxRetries, luceneQuery)
 		req, err := http.NewRequest("POST", searchAPIEndpoint, bytes.NewBuffer(queryBytes))
 		require.NoError(t, err)
-		req.Header.Set("Accept", "application/json")
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-API-TOKEN", apiKey)
 		client := &http.Client{Timeout: apiTimeout}
@@ -275,6 +264,7 @@ func fetchLogzSearchAPIWithRetries(t *testing.T, apiKey, queryBaseAPIURL, lucene
 		if resp.StatusCode != http.StatusOK {
 			lastErr = fmt.Errorf("API returned status %d on attempt %d: %s", resp.StatusCode, i+1, string(respBodyBytes))
 			e2eLogger.Warnf("%v. Retrying in %s...", lastErr, retryDelay)
+			e2eLogger.Debugf("Failed request body was: %s", string(queryBytes))
 			if i < maxRetries-1 {
 				time.Sleep(retryDelay)
 			}
@@ -405,72 +395,6 @@ func fetchLogzMetricsAPIWithRetries(t *testing.T, apiKey, metricsAPIBaseURL, pro
 	}
 	e2eLogger.Warnf("No data found for query '%s' after %d retries.", promqlQuery, maxRetries)
 	return nil, ErrNoDataFoundAfterRetries
-}
-
-func fetchLogzSearchAPIBasic(t *testing.T, apiKey, queryBaseAPIURL, luceneQuery string) (*logzioSearchResponse, error) {
-	searchAPIEndpoint := fmt.Sprintf("%s/v1/search", strings.TrimSuffix(queryBaseAPIURL, "/"))
-
-	queryBodyMap := logzioSearchQueryBody{
-		Query: map[string]interface{}{
-			"bool": map[string]interface{}{
-				"must": []map[string]interface{}{
-					{
-						"query_string": map[string]interface{}{
-							"query": luceneQuery,
-						},
-					},
-				},
-			},
-		},
-		From:           0,
-		Size:           1,
-		Sort:           []interface{}{map[string]string{"@timestamp": "desc"}},
-		Source:         true,
-		DocvalueFields: []string{"@timestamp"},
-		Version:        true,
-		StoredFields:   []string{"*"},
-		Highlight:      map[string]interface{}{},
-	}
-	queryBytes, err := json.Marshal(queryBodyMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal query for basic search: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", searchAPIEndpoint, bytes.NewBuffer(queryBytes))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request for basic search: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-TOKEN", apiKey)
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed for basic search: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body for basic search: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API status %d for basic search: %s", resp.StatusCode, string(respBodyBytes))
-	}
-
-	var logResponse logzioSearchResponse
-	err = json.Unmarshal(respBodyBytes, &logResponse)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response for basic search: %w. Body: %s", err, string(respBodyBytes))
-	}
-
-	if logResponse.Error != nil {
-		return nil, fmt.Errorf("Logz.io API error in basic search response: %s", logResponse.Error.Reason)
-	}
-
-	return &logResponse, nil
 }
 
 func getNestedValue(data map[string]interface{}, path ...string) interface{} {
