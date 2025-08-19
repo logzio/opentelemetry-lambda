@@ -34,13 +34,25 @@ func TestE2ETraces(t *testing.T) {
 	require.GreaterOrEqual(t, serverResp.getTotalHits(), 1, "Should find at least one server span.")
 
 	serverHit := serverResp.Hits.Hits[0].Source
+
+	// Extract traceID from common variants
+	candKeys := []string{"traceID", "traceId", "trace_id"}
 	var traceID string
-	if v, ok := serverHit["traceID"].(string); ok {
-		traceID = v
-	} else if v, ok := serverHit["traceId"].(string); ok {
-		traceID = v
-	} else if v, ok := getNestedValue(serverHit, "traceID").(string); ok {
-		traceID = v
+	for _, k := range candKeys {
+		if v, ok := serverHit[k]; ok {
+			if s, ok2 := v.(string); ok2 && s != "" {
+				traceID = s
+				break
+			}
+		}
+	}
+	if traceID == "" {
+		// Log available keys to aid debugging if missing
+		keys := make([]string, 0, len(serverHit))
+		for k := range serverHit {
+			keys = append(keys, k)
+		}
+		e2eLogger.Warnf("traceID not found on server span. Available keys: %v", keys)
 	}
 	require.NotEmpty(t, traceID, "traceID should be present on server span")
 	e2eLogger.Infof("Found server span with traceID: %s", traceID)
