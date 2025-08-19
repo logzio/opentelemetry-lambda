@@ -22,7 +22,7 @@ func TestE2ELogs(t *testing.T) {
 	require.NotEmpty(t, expectedFaasName, "EXPECTED_LAMBDA_FUNCTION_NAME must be set for log tests")
 
 	// Query for logs from our function - start with basic search
-	baseQuery := fmt.Sprintf(`faas.name:"%q"`, expectedFaasName)
+	baseQuery := fmt.Sprintf(`faas.name:"%s"`, expectedFaasName)
 
 	logChecks := []struct {
 		name        string
@@ -31,7 +31,7 @@ func TestE2ELogs(t *testing.T) {
 	}{
 		{
 			name:        "telemetry_api_subscription",
-			mustContain: `"Successfully subscribed to Telemetry API"`,
+			mustContain: `Successfully subscribed to Telemetry API`,
 			assertion: func(t *testing.T, hits []map[string]interface{}) {
 				assert.GreaterOrEqual(t, len(hits), 1, "Should find telemetry API subscription log")
 				hit := hits[0]
@@ -40,7 +40,7 @@ func TestE2ELogs(t *testing.T) {
 		},
 		{
 			name:        "function_invocation_log",
-			mustContain: `"📍 Lambda invocation started"`,
+			mustContain: `📍 Lambda invocation started`,
 			assertion: func(t *testing.T, hits []map[string]interface{}) {
 				assert.GreaterOrEqual(t, len(hits), 1, "Should find function invocation start log")
 				hit := hits[0]
@@ -53,7 +53,7 @@ func TestE2ELogs(t *testing.T) {
 
 	for _, check := range logChecks {
 		t.Run(check.name, func(t *testing.T) {
-			query := fmt.Sprintf(`%s AND %s`, baseQuery, check.mustContain)
+			query := fmt.Sprintf(`%s AND "%s"`, baseQuery, check.mustContain)
 			e2eLogger.Infof("Querying for logs: %s", query)
 
 			logResponse, err := fetchLogzSearchAPI(t, logzioLogsQueryAPIKey, logzioAPIURL, query, "logs")
