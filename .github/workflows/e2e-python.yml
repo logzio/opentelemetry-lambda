@@ -108,6 +108,38 @@ jobs:
           echo "Current environment variables:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'Environment.Variables' --output json || echo "No environment variables set"
 
+      - name: Ensure KMS decrypt permission on function role (if KMS key is set)
+        run: |
+          set -euo pipefail
+          KMS_KEY=$(aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'KMSKeyArn' --output text || true)
+          if [ -n "${KMS_KEY}" ] && [ "${KMS_KEY}" != "None" ] && [ "${KMS_KEY}" != "null" ]; then
+            echo "KMS key detected on function: ${KMS_KEY}"
+            ROLE_ARN=$(aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'Role' --output text)
+            ROLE_NAME=$(echo "$ROLE_ARN" | awk -F'/' '{print $NF}')
+            echo "Ensuring role ${ROLE_NAME} can decrypt the key..."
+            cat > kms-decrypt-policy.json <<EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "kms:Decrypt",
+                  "kms:DescribeKey"
+                ],
+                "Resource": "${KMS_KEY}"
+              }
+            ]
+          }
+          EOF
+            aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "E2EAllowKmsDecryptEnv" --policy-document file://kms-decrypt-policy.json
+            rm -f kms-decrypt-policy.json
+            echo "Waiting 30s for IAM policy propagation..."
+            sleep 30
+          else
+            echo "No customer-managed KMS key configured on function."
+          fi
+
       - name: Update Lambda configuration
         run: |
           echo "Updating function configuration..."
