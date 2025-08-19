@@ -157,10 +157,15 @@ func skipIfEnvVarsMissing(t *testing.T, testName string) {
 }
 
 type logzioSearchQueryBody struct {
-	Query       map[string]interface{} `json:"query"`
-	Size        int                    `json:"size"`
-	Sort        []map[string]string    `json:"sort"`
-	SearchAfter []interface{}          `json:"search_after,omitempty"`
+	Query          map[string]interface{} `json:"query"`
+	From           int                    `json:"from"`
+	Size           int                    `json:"size"`
+	Sort           []interface{}          `json:"sort"`
+	Source         bool                   `json:"_source"`
+	DocvalueFields []string               `json:"docvalue_fields"`
+	Version        bool                   `json:"version"`
+	StoredFields   []string               `json:"stored_fields"`
+	Highlight      map[string]interface{} `json:"highlight"`
 }
 
 type logzioSearchResponse struct {
@@ -206,9 +211,35 @@ func fetchLogzSearchAPIWithRetries(t *testing.T, apiKey, queryBaseAPIURL, lucene
 
 	timestampGte := searchStartTime.Format(time.RFC3339Nano)
 	timestampLte := searchEndTime.Format(time.RFC3339Nano)
+
 	queryBodyMap := logzioSearchQueryBody{
-		Query: map[string]interface{}{"bool": map[string]interface{}{"must": []map[string]interface{}{{"query_string": map[string]string{"query": luceneQuery}}}, "filter": []map[string]interface{}{{"range": map[string]interface{}{"@timestamp": map[string]string{"gte": timestampGte, "lte": timestampLte}}}}}},
-		Size:  100, Sort: []map[string]string{{"@timestamp": "desc"}},
+		Query: map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{
+					{
+						"query_string": map[string]interface{}{
+							"query": luceneQuery,
+						},
+					},
+					{
+						"range": map[string]interface{}{
+							"@timestamp": map[string]interface{}{
+								"gte": timestampGte,
+								"lte": timestampLte,
+							},
+						},
+					},
+				},
+			},
+		},
+		From:           0,
+		Size:           100,
+		Sort:           []interface{}{map[string]string{"@timestamp": "desc"}},
+		Source:         true,
+		DocvalueFields: []string{"@timestamp"},
+		Version:        true,
+		StoredFields:   []string{"*"},
+		Highlight:      map[string]interface{}{},
 	}
 	queryBytes, err := json.Marshal(queryBodyMap)
 	require.NoError(t, err)
@@ -378,7 +409,28 @@ func fetchLogzMetricsAPIWithRetries(t *testing.T, apiKey, metricsAPIBaseURL, pro
 
 func fetchLogzSearchAPIBasic(t *testing.T, apiKey, queryBaseAPIURL, luceneQuery string) (*logzioSearchResponse, error) {
 	searchAPIEndpoint := fmt.Sprintf("%s/v1/search", strings.TrimSuffix(queryBaseAPIURL, "/"))
-	queryBodyMap := logzioSearchQueryBody{Query: map[string]interface{}{"bool": map[string]interface{}{"must": []map[string]interface{}{{"query_string": map[string]string{"query": luceneQuery}}}}}, Size: 1, Sort: []map[string]string{{"@timestamp": "desc"}}}
+
+	queryBodyMap := logzioSearchQueryBody{
+		Query: map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{
+					{
+						"query_string": map[string]interface{}{
+							"query": luceneQuery,
+						},
+					},
+				},
+			},
+		},
+		From:           0,
+		Size:           1,
+		Sort:           []interface{}{map[string]string{"@timestamp": "desc"}},
+		Source:         true,
+		DocvalueFields: []string{"@timestamp"},
+		Version:        true,
+		StoredFields:   []string{"*"},
+		Highlight:      map[string]interface{}{},
+	}
 	queryBytes, err := json.Marshal(queryBodyMap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query for basic search: %w", err)

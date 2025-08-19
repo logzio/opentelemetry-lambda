@@ -22,7 +22,7 @@ func TestE2ELogs(t *testing.T) {
 	require.NotEmpty(t, expectedFaasName, "EXPECTED_LAMBDA_FUNCTION_NAME must be set for log tests")
 
 	// Query for logs from our function - start with basic search
-	baseQuery := fmt.Sprintf(`faas\.name:"%s"`, expectedFaasName)
+	baseQuery := fmt.Sprintf(`faas.name:"%s"`, expectedFaasName)
 
 	logChecks := []struct {
 		name        string

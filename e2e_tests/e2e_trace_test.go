@@ -25,7 +25,7 @@ func TestE2ETraces(t *testing.T) {
 	e2eLogger.Infof("Expecting traces for service: %s, function: %s, environment: %s", expectedServiceName, expectedFaasName, e2eTestEnvironmentLabel)
 
 	// Simple query for any traces from our service and function
-	query := fmt.Sprintf(`type:jaegerSpan AND process\.serviceName:"%s" AND process\.tag\.faas@name:"%s"`, expectedServiceName, expectedFaasName)
+	query := fmt.Sprintf(`type:jaegerSpan AND process.serviceName:"%s" AND process.tag.faas@name:"%s"`, expectedServiceName, expectedFaasName)
 	e2eLogger.Infof("Querying for traces: %s", query)
 
 	traceResponse, err := fetchLogzSearchAPI(t, tracesQueryKey, logzioAPIURL, query, "traces")
