@@ -8,8 +8,8 @@ import (
 )
 
 func TestE2ERunner(t *testing.T) {
-	e2eLogger.Info("E2E Test Runner: Waiting 180 seconds for initial Lambda execution and data ingestion before starting tests...")
-	time.Sleep(180 * time.Second)
+	e2eLogger.Info("E2E Test Runner: Waiting 60 seconds for initial Lambda execution and data ingestion before starting tests...")
+	time.Sleep(60 * time.Second)
 
 	initTimeTracking()
 	e2eLogger.Infof("E2E Test Runner starting with a total budget of %d seconds.", totalBudgetSeconds)
