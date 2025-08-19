@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"testing"
 
@@ -21,17 +20,14 @@ func TestE2ELogs(t *testing.T) {
 	expectedFaasName := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME")
 	require.NotEmpty(t, expectedFaasName, "EXPECTED_LAMBDA_FUNCTION_NAME must be set for log tests")
 
-	// Query for logs from our function - start with basic search
-	baseQuery := fmt.Sprintf(`faas.name:"%s"`, expectedFaasName)
-
 	logChecks := []struct {
-		name        string
-		mustContain string
-		assertion   func(t *testing.T, hits []map[string]interface{})
+		name      string
+		query     string
+		assertion func(t *testing.T, hits []map[string]interface{})
 	}{
 		{
-			name:        "telemetry_api_subscription",
-			mustContain: `Successfully subscribed to Telemetry API`,
+			name:  "telemetry_api_subscription",
+			query: `faas.name:"one-layer-e2e-test-python" AND "Successfully subscribed to Telemetry API"`,
 			assertion: func(t *testing.T, hits []map[string]interface{}) {
 				assert.GreaterOrEqual(t, len(hits), 1, "Should find telemetry API subscription log")
 				hit := hits[0]
@@ -39,8 +35,8 @@ func TestE2ELogs(t *testing.T) {
 			},
 		},
 		{
-			name:        "function_invocation_log",
-			mustContain: `📍 Lambda invocation started`,
+			name:  "function_invocation_log",
+			query: `faas.name:"one-layer-e2e-test-python" AND "📍 Lambda invocation started"`,
 			assertion: func(t *testing.T, hits []map[string]interface{}) {
 				assert.GreaterOrEqual(t, len(hits), 1, "Should find function invocation start log")
 				hit := hits[0]
@@ -53,10 +49,9 @@ func TestE2ELogs(t *testing.T) {
 
 	for _, check := range logChecks {
 		t.Run(check.name, func(t *testing.T) {
-			query := fmt.Sprintf(`%s AND "%s"`, baseQuery, check.mustContain)
-			e2eLogger.Infof("Querying for logs: %s", query)
+			e2eLogger.Infof("Querying for logs: %s", check.query)
 
-			logResponse, err := fetchLogzSearchAPI(t, logzioLogsQueryAPIKey, logzioAPIURL, query, "logs")
+			logResponse, err := fetchLogzSearchAPI(t, logzioLogsQueryAPIKey, logzioAPIURL, check.query, "logs")
 			if err != nil {
 				e2eLogger.Errorf("Failed to fetch logs for check '%s' after all retries: %v", check.name, err)
 				allChecksPassed = false

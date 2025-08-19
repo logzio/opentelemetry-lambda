@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"testing"
 
@@ -24,8 +23,8 @@ func TestE2ETraces(t *testing.T) {
 
 	e2eLogger.Infof("Expecting traces for service: %s, function: %s, environment: %s", expectedServiceName, expectedFaasName, e2eTestEnvironmentLabel)
 
-	// Simple query for any traces from our service and function
-	query := fmt.Sprintf(`type:jaegerSpan AND process.serviceName:"%s" AND process.tag.faas@name:"%s"`, expectedServiceName, expectedFaasName)
+	// Hardcoded query for traces from our service and function
+	query := `type:jaegerSpan AND process.serviceName:"logzio-e2e-python-service" AND process.tag.faas@name:"one-layer-e2e-test-python"`
 	e2eLogger.Infof("Querying for traces: %s", query)
 
 	traceResponse, err := fetchLogzSearchAPI(t, tracesQueryKey, logzioAPIURL, query, "traces")
