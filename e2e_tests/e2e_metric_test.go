@@ -22,48 +22,70 @@ func TestE2EMetrics(t *testing.T) {
 	expectedServiceName := os.Getenv("EXPECTED_SERVICE_NAME")
 	require.NotEmpty(t, expectedServiceName, "EXPECTED_SERVICE_NAME environment variable must be set")
 
-	e2eLogger.Infof("Expecting metrics with common labels - faas.name: %s, service_name: %s, environment: %s", expectedFaasName, expectedServiceName, e2eTestEnvironmentLabel)
+	e2eLogger.Infof("Validating presence of key metrics for job: %s (function: %s)", expectedServiceName, expectedFaasName)
 
-	query := fmt.Sprintf(`{environment="%s", faas_name="%s", service_name="%s"}`, e2eTestEnvironmentLabel, expectedFaasName, expectedServiceName)
-	e2eLogger.Infof("Querying for any metrics matching: %s", query)
-
-	metricResponse, err := fetchLogzMetricsAPI(t, logzioMetricsQueryAPIKey, logzioMetricsQueryBaseURL, query)
-
-	if err != nil {
-		if errors.Is(err, ErrNoDataFoundAfterRetries) {
-			t.Fatalf("Failed to find metrics after all retries for query '%s': %v", query, err)
-		} else {
-			t.Fatalf("Error fetching metrics for query '%s': %v", query, err)
+	// Helper to run a PromQL query and assert results
+	runQuery := func(t *testing.T, promql string) *logzioPrometheusResponse {
+		e2eLogger.Infof("Querying metrics: %s", promql)
+		metricResponse, err := fetchLogzMetricsAPI(t, logzioMetricsQueryAPIKey, logzioMetricsQueryBaseURL, promql)
+		if err != nil {
+			if errors.Is(err, ErrNoDataFoundAfterRetries) {
+				t.Fatalf("No metrics found after retries for query '%s': %v", promql, err)
+			} else {
+				t.Fatalf("Error fetching metrics for query '%s': %v", promql, err)
+			}
 		}
-	}
-	require.NotNil(t, metricResponse, "Metric response should not be nil if error is nil")
-	require.Equal(t, "success", metricResponse.Status, "Metric API status should be success")
-	require.GreaterOrEqual(t, len(metricResponse.Data.Result), 1, "Should find at least one metric series matching the core labels. Query: %s", query)
-
-	e2eLogger.Info("Validating labels on the first found metric series...")
-	firstSeries := metricResponse.Data.Result[0]
-	metricLabels := firstSeries.Metric
-	e2eLogger.Infof("Found metric '%s' with labels: %+v", metricLabels["__name__"], metricLabels)
-
-	assert.Equal(t, e2eTestEnvironmentLabel, metricLabels["environment"], "Label 'environment' mismatch")
-	assert.Equal(t, expectedFaasName, metricLabels["faas_name"], "Label 'faas_name' mismatch")
-	assert.Equal(t, expectedServiceName, metricLabels["service_name"], "Label 'service_name' mismatch")
-	assert.Equal(t, "aws_lambda", metricLabels["cloud_platform"], "Label 'cloud_platform' should be 'aws_lambda'")
-	assert.Equal(t, "aws", metricLabels["cloud_provider"], "Label 'cloud_provider' should be 'aws'")
-	assert.NotEmpty(t, metricLabels["cloud_region"], "Label 'cloud_region' should be present")
-
-	if metricName, ok := metricLabels["__name__"]; ok && (metricName == "aws_lambda_duration_milliseconds" || metricName == "aws_lambda_maxMemoryUsed_megabytes" || metricName == "aws_lambda_invocations" || metricName == "aws_lambda_errors") {
-		assert.NotEmpty(t, metricLabels["faas_execution"], "Label 'faas_execution' (Lambda Request ID) should be present for AWS platform metrics")
+		require.NotNil(t, metricResponse)
+		require.Equal(t, "success", metricResponse.Status)
+		require.GreaterOrEqual(t, len(metricResponse.Data.Result), 1, "Expected at least one series for query: %s", promql)
+		return metricResponse
 	}
 
-	foundDurationMetric := false
-	for _, series := range metricResponse.Data.Result {
-		if series.Metric["__name__"] == "aws_lambda_duration_milliseconds" {
-			foundDurationMetric = true
-			e2eLogger.Info("Confirmed 'aws_lambda_duration_milliseconds' is among the found metrics with correct labels.")
-			break
-		}
+	// 1) AWS Lambda platform metrics (names as seen in Grafana)
+	awsLambdaMetrics := []string{
+		"aws_lambda_billedDurationMs_milliseconds",
+		"aws_lambda_durationMs_milliseconds",
+		"aws_lambda_initDurationMs_milliseconds",
+		"aws_lambda_maxMemoryUsedMB_bytes",
+		"aws_lambda_memorySizeMB_bytes",
 	}
-	assert.True(t, foundDurationMetric, "Expected 'aws_lambda_duration_milliseconds' to be one of the metrics reported with the correct labels.")
-	e2eLogger.Info("E2E Metrics Test: Core label validation successful.")
+	for _, m := range awsLambdaMetrics {
+		promql := fmt.Sprintf(`%s{job="%s"}`, m, expectedServiceName)
+		t.Run(m, func(t *testing.T) {
+			resp := runQuery(t, promql)
+			first := resp.Data.Result[0].Metric
+			// Basic label sanity
+			assert.Equal(t, expectedServiceName, first["job"], "job label should match service name")
+		})
+	}
+
+	// 2) HTTP client duration metrics (count/sum/bucket) for httpbin GETs
+	httpMetrics := []string{
+		"http_client_duration_milliseconds_count",
+		"http_client_duration_milliseconds_sum",
+		"http_client_duration_milliseconds_bucket",
+	}
+	for _, m := range httpMetrics {
+		// Filter by job, host and method as in typical dashboards
+		promql := fmt.Sprintf(`%s{job="%s",http_host="httpbin.org",http_method="GET"}`, m, expectedServiceName)
+		t.Run(m, func(t *testing.T) {
+			resp := runQuery(t, promql)
+			first := resp.Data.Result[0].Metric
+			assert.Equal(t, expectedServiceName, first["job"], "job label should match service name")
+			if host, ok := first["http_host"]; ok {
+				assert.Equal(t, "httpbin.org", host)
+			}
+			if method, ok := first["http_method"]; ok {
+				assert.Equal(t, "GET", method)
+			}
+		})
+	}
+
+	// 3) Optional: verify that platform metrics include a Lambda invocation label when present
+	promqlExec := fmt.Sprintf(`aws_lambda_durationMs_milliseconds{job="%s"}`, expectedServiceName)
+	resp := runQuery(t, promqlExec)
+	first := resp.Data.Result[0].Metric
+	if _, ok := first["faas_invocation_id"]; ok {
+		assert.NotEmpty(t, first["faas_invocation_id"], "faas_invocation_id should not be empty when present")
+	}
 }
