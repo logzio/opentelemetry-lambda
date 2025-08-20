@@ -348,7 +348,14 @@ func fetchLogzMetricsAPI(t *testing.T, apiKey, metricsAPIBaseURL, promqlQuery st
 }
 
 func fetchLogzMetricsAPIWithRetries(t *testing.T, apiKey, metricsAPIBaseURL, promqlQuery string, maxRetries int, retryDelay time.Duration) (*logzioPrometheusResponse, error) {
-	queryAPIEndpoint := fmt.Sprintf("%s/v1/metrics/prometheus/api/v1/query?query=%s", strings.TrimSuffix(metricsAPIBaseURL, "/"), url.QueryEscape(promqlQuery))
+	endpointBase := strings.TrimSuffix(metricsAPIBaseURL, "/")
+	var queryAPIEndpoint string
+	if strings.Contains(endpointBase, "/api/v1/query") {
+		queryAPIEndpoint = fmt.Sprintf("%s?query=%s", endpointBase, url.QueryEscape(promqlQuery))
+	} else {
+		queryAPIEndpoint = fmt.Sprintf("%s/v1/metrics/prometheus/api/v1/query?query=%s", endpointBase, url.QueryEscape(promqlQuery))
+	}
+	e2eLogger.Debugf("Metrics query endpoint: %s", queryAPIEndpoint)
 	var lastErr error
 
 	for i := 0; i < maxRetries; i++ {
