@@ -38,11 +38,31 @@ exporters:
     region: "${env:LOGZIO_REGION}"
     headers:
       user-agent: logzio-opentelemetry-layer-logs
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 30s
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 512
   logzio/traces:
     account_token: "${env:LOGZIO_TRACES_TOKEN}"
     region: "${env:LOGZIO_REGION}"
     headers:
       user-agent: logzio-opentelemetry-layer-traces
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 30s
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 512
   prometheusremotewrite:
     endpoint: "https://listener.logz.io:8053"
     headers:
@@ -50,6 +70,16 @@ exporters:
       user-agent: logzio-opentelemetry-layer-metrics
     target_info:
       enabled: false
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 30s
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 512
 
 service:
   pipelines:
