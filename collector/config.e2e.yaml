@@ -42,7 +42,7 @@ exporters:
       initial_interval: 1s
       max_interval: 5s
       max_elapsed_time: 0s
-    queue:
+    sending_queue:
       enabled: true
       num_consumers: 2
       queue_size: 512
@@ -58,7 +58,7 @@ exporters:
       initial_interval: 1s
       max_interval: 5s
       max_elapsed_time: 0s
-    queue:
+    sending_queue:
       enabled: true
       num_consumers: 2
       queue_size: 512
@@ -76,7 +76,7 @@ exporters:
       initial_interval: 1s
       max_interval: 5s
       max_elapsed_time: 0s
-    queue:
+    sending_queue:
       enabled: true
       num_consumers: 2
       queue_size: 512
