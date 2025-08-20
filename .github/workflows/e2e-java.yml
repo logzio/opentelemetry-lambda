@@ -44,7 +44,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Build combined Java layer (amd64)
@@ -91,7 +91,7 @@ jobs:
             --layer-name "$LAYER_NAME" \
             --license-info "Apache-2.0" \
             --compatible-architectures x86_64 \
-            --compatible-runtimes java11 java17 \
+            --compatible-runtimes java11 java17 java21 \
             --zip-file fileb://$ZIP_FILE \
             --query 'LayerVersionArn' --output text)
           echo "layer_arn=$ARN" >> "$GITHUB_OUTPUT"
