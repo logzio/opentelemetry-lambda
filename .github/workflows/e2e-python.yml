@@ -122,7 +122,7 @@ jobs:
           echo "Updated configuration:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Layers:Layers[].Arn,Environment:Environment.Variables}' --output json
 
-      - name: Invoke function twice
+      - name: Invoke function multiple times
         run: |
           echo "Invoking function first time..."
           aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response1.json
@@ -134,6 +134,27 @@ jobs:
           aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response2.json
           echo "Second invocation response:"
           cat response2.json
+          echo ""
+
+          echo "Sleeping for 5 seconds before additional invocations..."
+          sleep 5
+
+          echo "Invoking function third time..."
+          aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response3.json
+          echo "Third invocation response:"
+          cat response3.json
+          echo ""
+
+          echo "Invoking function fourth time..."
+          aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response4.json
+          echo "Fourth invocation response:"
+          cat response4.json
+          echo ""
+
+          echo "Invoking function fifth time..."
+          aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response5.json
+          echo "Fifth invocation response:"
+          cat response5.json
           echo ""
 
       - name: Check CloudWatch logs
