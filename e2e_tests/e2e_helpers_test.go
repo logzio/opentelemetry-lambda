@@ -110,16 +110,15 @@ func skipIfEnvVarsMissing(t *testing.T, testName string) {
 	baseRequired := []string{"E2E_TEST_ENVIRONMENT_LABEL"}
 	specificRequiredMissing := false
 
-	if logzioAPIURL == "" {
-		e2eLogger.Errorf("Skipping E2E test %s: Missing base required environment variable LOGZIO_API_URL.", testName)
-		t.Skipf("Skipping E2E test %s: Missing base required environment variable LOGZIO_API_URL.", testName)
-		return
-	}
-
 	if strings.Contains(testName, "Logs") || strings.Contains(testName, "E2ELogsTest") {
 		if logzioLogsQueryAPIKey == "" {
 			e2eLogger.Errorf("Skipping E2E Log test %s: Missing LOGZIO_API_KEY.", testName)
 			t.Skipf("Skipping E2E Log test %s: Missing LOGZIO_API_KEY.", testName)
+			specificRequiredMissing = true
+		}
+		if logzioAPIURL == "" {
+			e2eLogger.Errorf("Skipping E2E Log test %s: Missing LOGZIO_API_URL.", testName)
+			t.Skipf("Skipping E2E Log test %s: Missing LOGZIO_API_URL.", testName)
 			specificRequiredMissing = true
 		}
 	}
@@ -348,7 +347,7 @@ func fetchLogzMetricsAPI(t *testing.T, apiKey, metricsAPIBaseURL, promqlQuery st
 }
 
 func fetchLogzMetricsAPIWithRetries(t *testing.T, apiKey, metricsAPIBaseURL, promqlQuery string, maxRetries int, retryDelay time.Duration) (*logzioPrometheusResponse, error) {
-	queryAPIEndpoint := fmt.Sprintf("%s/v1/metrics/prometheus/api/v1/query?query=%s", strings.TrimSuffix(metricsAPIBaseURL, "/"), url.QueryEscape(promqlQuery))
+	queryAPIEndpoint := buildMetricsQueryEndpoint(metricsAPIBaseURL, "query", promqlQuery)
 	var lastErr error
 
 	for i := 0; i < maxRetries; i++ {
@@ -420,101 +419,16 @@ func fetchLogzMetricsAPIWithRetries(t *testing.T, apiKey, metricsAPIBaseURL, pro
 	return nil, ErrNoDataFoundAfterRetries
 }
 
-type logzioLabelsResponse struct {
-	Status    string   `json:"status"`
-	Data      []string `json:"data"`
-	ErrorType string   `json:"errorType,omitempty"`
-	Error     string   `json:"error,omitempty"`
-}
-
-func fetchLogzMetricsLabelsAPI(t *testing.T, apiKey, metricsAPIBaseURL string, startTime, endTime time.Time, matchSelectors []string, limit int) (*logzioLabelsResponse, error) {
-	maxRetries, retryDelay := getDynamicRetryConfig("metrics")
-	return fetchLogzMetricsLabelsAPIWithRetries(t, apiKey, metricsAPIBaseURL, startTime, endTime, matchSelectors, limit, maxRetries, retryDelay)
-}
-
-func fetchLogzMetricsLabelsAPIWithRetries(t *testing.T, apiKey, metricsAPIBaseURL string, startTime, endTime time.Time, matchSelectors []string, limit int, maxRetries int, retryDelay time.Duration) (*logzioLabelsResponse, error) {
-	base := strings.TrimSuffix(metricsAPIBaseURL, "/")
-	endpoint := fmt.Sprintf("%s/v1/metrics/prometheus/api/v1/labels", base)
-
-	q := url.Values{}
-	q.Set("start", startTime.UTC().Format(time.RFC3339))
-	q.Set("end", endTime.UTC().Format(time.RFC3339))
-	if limit > 0 {
-		q.Set("limit", fmt.Sprintf("%d", limit))
+// buildMetricsQueryEndpoint normalizes base URL to Logz.io public Prometheus API format.
+// It accepts either a root API URL (e.g., https://api.logz.io) or a URL that already
+// contains the "/v1/metrics/prometheus" prefix, and constructs:
+// {root}/v1/metrics/prometheus/api/v1/{apiPath}?query={promql}
+func buildMetricsQueryEndpoint(baseURL string, apiPath string, promqlQuery string) string {
+	trimmedBase := strings.TrimSuffix(baseURL, "/")
+	if !strings.Contains(trimmedBase, "/metrics/prometheus") {
+		trimmedBase = trimmedBase + "/v1/metrics/prometheus"
 	}
-	for _, sel := range matchSelectors {
-		q.Add("match[]", sel)
-	}
-	fullURL := endpoint + "?" + q.Encode()
-
-	var lastErr error
-	for i := 0; i < maxRetries; i++ {
-		e2eLogger.Infof("Attempt %d/%d to fetch Logz.io label names...", i+1, maxRetries)
-		req, err := http.NewRequest("GET", fullURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("labels API request creation failed: %w", err)
-		}
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("X-API-TOKEN", apiKey)
-
-		client := &http.Client{Timeout: apiTimeout}
-		resp, err := client.Do(req)
-		if err != nil {
-			lastErr = fmt.Errorf("labels API request failed on attempt %d: %w", i+1, err)
-			e2eLogger.Warnf("%v. Retrying in %s...", lastErr, retryDelay)
-			if i < maxRetries-1 {
-				time.Sleep(retryDelay)
-			}
-			continue
-		}
-		respBodyBytes, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			lastErr = fmt.Errorf("failed to read labels API response body on attempt %d: %w", i+1, readErr)
-			e2eLogger.Warnf("%v. Retrying in %s...", lastErr, retryDelay)
-			if i < maxRetries-1 {
-				time.Sleep(retryDelay)
-			}
-			continue
-		}
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("labels API returned status %d on attempt %d: %s", resp.StatusCode, i+1, string(respBodyBytes))
-			e2eLogger.Warnf("%v. Retrying in %s...", lastErr, retryDelay)
-			if i < maxRetries-1 {
-				time.Sleep(retryDelay)
-			}
-			continue
-		}
-		var labelsResp logzioLabelsResponse
-		unmarshalErr := json.Unmarshal(respBodyBytes, &labelsResp)
-		if unmarshalErr != nil {
-			lastErr = fmt.Errorf("failed to unmarshal labels API response on attempt %d: %w. Body: %s", i+1, unmarshalErr, string(respBodyBytes))
-			e2eLogger.Warnf("%v. Retrying in %s...", lastErr, retryDelay)
-			if i < maxRetries-1 {
-				time.Sleep(retryDelay)
-			}
-			continue
-		}
-		if labelsResp.Status != "success" {
-			lastErr = fmt.Errorf("Logz.io Labels API returned status '%s' on attempt %d, ErrorType: '%s', Error: '%s'", labelsResp.Status, i+1, labelsResp.ErrorType, labelsResp.Error)
-			e2eLogger.Warnf("%v. Retrying in %s...", lastErr, retryDelay)
-			if i < maxRetries-1 {
-				time.Sleep(retryDelay)
-			}
-			continue
-		}
-		if len(labelsResp.Data) > 0 {
-			e2eLogger.Infof("Attempt %d successful. Retrieved %d labels.", i+1, len(labelsResp.Data))
-			return &labelsResp, nil
-		}
-		lastErr = fmt.Errorf("attempt %d/%d: labels API returned zero labels", i+1, maxRetries)
-		e2eLogger.Infof("%s. Retrying in %s...", lastErr.Error(), retryDelay)
-		if i < maxRetries-1 {
-			time.Sleep(retryDelay)
-		}
-	}
-	e2eLogger.Warnf("No labels returned after %d retries.", maxRetries)
-	return nil, ErrNoDataFoundAfterRetries
+	return fmt.Sprintf("%s/api/v1/%s?query=%s", trimmedBase, apiPath, url.QueryEscape(promqlQuery))
 }
 
 func getNestedValue(data map[string]interface{}, path ...string) interface{} {

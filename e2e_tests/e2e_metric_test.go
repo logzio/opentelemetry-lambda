@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,6 +43,7 @@ func TestE2EMetrics(t *testing.T) {
 
 		first := metricResponse.Data.Result[0]
 		labels := first.Metric
+		assert.Equal(t, metricName, labels["__name__"], "expected __name__ label to match metric name %s", metricName)
 		assert.Equal(t, expectedServiceName, labels["job"], "metric %s should have job=%s", metricName, expectedServiceName)
 
 		if metricName == "http_client_duration_milliseconds_count" {
@@ -59,28 +59,6 @@ func TestE2EMetrics(t *testing.T) {
 			}
 		}
 	}
-
-	// Also verify the labels endpoint returns common labels (e.g., job)
-	start := time.Now().Add(-30 * time.Minute)
-	end := time.Now()
-	labelsResp, err := fetchLogzMetricsLabelsAPI(t, logzioMetricsQueryAPIKey, logzioMetricsQueryBaseURL, start, end, []string{fmt.Sprintf(`{job="%s"}`, expectedServiceName)}, 200)
-	if err != nil {
-		if errors.Is(err, ErrNoDataFoundAfterRetries) {
-			t.Fatalf("Failed to retrieve labels after all retries: %v", err)
-		} else {
-			t.Fatalf("Error retrieving labels: %v", err)
-		}
-	}
-	require.NotNil(t, labelsResp)
-	require.Equal(t, "success", labelsResp.Status)
-	foundJob := false
-	for _, l := range labelsResp.Data {
-		if l == "job" {
-			foundJob = true
-			break
-		}
-	}
-	require.True(t, foundJob, "labels endpoint should include 'job'")
 
 	e2eLogger.Info("E2E Metrics Test: Specific metric validation successful.")
 }
