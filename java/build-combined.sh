@@ -77,6 +77,11 @@ mkdir -p "$WORKSPACE_DIR/collector-config"
 cp "$COLLECTOR_DIR/build/extensions"/* "$WORKSPACE_DIR/extensions/"
 cp "$COLLECTOR_DIR/config.yaml" "$WORKSPACE_DIR/collector-config/"
 
+# Include E2E-specific collector config for testing workflows
+if [[ -f "$COLLECTOR_DIR/config.e2e.yaml" ]]; then
+  cp "$COLLECTOR_DIR/config.e2e.yaml" "$WORKSPACE_DIR/collector-config/"
+fi
+
 # 6. Create the final layer package
 echo "--> Creating final layer .zip package..."
 (

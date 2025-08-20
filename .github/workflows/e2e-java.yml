@@ -1,4 +1,4 @@
-name: E2E - Node.js Layer
+name: E2E - Java Layer
 
 on:
   workflow_dispatch:
@@ -12,6 +12,10 @@ on:
         required: false
         default: "us-east-1"
 
+  push:
+    branches:
+      - feat/unified-lambda-layer
+
 permissions:
   contents: read
 
@@ -19,9 +23,9 @@ env:
   AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
   AWS_DEFAULT_REGION: ${{ inputs.aws_region || 'us-east-1' }}
   ARCHITECTURE: amd64
-  FUNCTION_NAME: one-layer-e2e-test-nodejs
-  LAYER_BASE_NAME: otel-nodejs-extension-e2e
-  SERVICE_NAME: logzio-e2e-nodejs-service
+  FUNCTION_NAME: one-layer-e2e-test-java
+  LAYER_BASE_NAME: otel-java-extension-e2e
+  SERVICE_NAME: logzio-e2e-java-service
   LOGZIO_REGION: us
 
 jobs:
@@ -36,21 +40,23 @@ jobs:
         with:
           go-version-file: collector/go.mod
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
-          node-version: '20'
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
 
-      - name: Build combined Node.js layer (amd64)
+      - name: Build combined Java layer (amd64)
         run: |
-          cd nodejs/packages/layer
+          cd java
           ARCHITECTURE=${ARCHITECTURE} ./build-combined.sh
 
       - name: Upload layer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: otel-nodejs-extension-layer.zip
-          path: nodejs/packages/layer/build/otel-nodejs-extension-layer.zip
+          name: otel-java-extension-layer.zip
+          path: java/build/otel-java-extension-layer-${{ env.ARCHITECTURE }}.zip
 
   publish-update-invoke:
     runs-on: ubuntu-latest
@@ -65,7 +71,7 @@ jobs:
       - name: Download layer artifact
         uses: actions/download-artifact@v4
         with:
-          name: otel-nodejs-extension-layer.zip
+          name: otel-java-extension-layer.zip
 
       - name: Configure AWS (User Credentials)
         uses: aws-actions/configure-aws-credentials@v4
@@ -80,19 +86,20 @@ jobs:
         run: |
           set -euo pipefail
           LAYER_NAME="${LAYER_BASE_NAME}-amd64"
+          ZIP_FILE="otel-java-extension-layer-${ARCHITECTURE}.zip"
           ARN=$(aws lambda publish-layer-version \
             --layer-name "$LAYER_NAME" \
             --license-info "Apache-2.0" \
             --compatible-architectures x86_64 \
-            --compatible-runtimes nodejs18.x nodejs20.x nodejs22.x \
-            --zip-file fileb://otel-nodejs-extension-layer.zip \
+            --compatible-runtimes java11 java17 \
+            --zip-file fileb://$ZIP_FILE \
             --query 'LayerVersionArn' --output text)
           echo "layer_arn=$ARN" >> "$GITHUB_OUTPUT"
 
       - name: Prepare variables
         id: vars
         run: |
-          echo "e2e_label=nodejs-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo "e2e_label=java-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Check function exists and get current config
         run: |
@@ -111,7 +118,7 @@ jobs:
           aws lambda update-function-configuration \
             --function-name "${FUNCTION_NAME}" \
             --layers "${{ steps.publish.outputs.layer_arn }}" \
-            --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_NODE_ENABLED_INSTRUMENTATIONS='http,undici',OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
+            --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
 
           echo "Waiting for function update to complete..."
           aws lambda wait function-updated --function-name "${FUNCTION_NAME}"
@@ -191,7 +198,7 @@ jobs:
           LOGZIO_METRICS_QUERY_URL: ${{ inputs.logzio_api_url || 'https://api.logz.io' }}
           LOGZIO_API_TRACES_KEY: ${{ secrets.LOGZIO_API_TRACES_KEY }}
           E2E_TEST_ENVIRONMENT_LABEL: ${{ needs.publish-update-invoke.outputs.e2e_label }}
-          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-nodejs
+          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-java
           EXPECTED_SERVICE_NAME: ${{ env.SERVICE_NAME }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           AWS_REGION: ${{ env.AWS_REGION }}
