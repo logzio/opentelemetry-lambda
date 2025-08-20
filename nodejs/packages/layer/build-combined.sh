@@ -57,6 +57,11 @@ mkdir -p "$WORKSPACE_DIR/collector-config"
 cp "$COLLECTOR_DIR/build/extensions"/* "$WORKSPACE_DIR/extensions/"
 cp "$COLLECTOR_DIR/config.yaml" "$WORKSPACE_DIR/collector-config/"
 
+# Include E2E-specific collector config for testing workflows
+if [ -f "$COLLECTOR_DIR/config.e2e.yaml" ]; then
+	cp "$COLLECTOR_DIR/config.e2e.yaml" "$WORKSPACE_DIR/collector-config/"
+fi
+
 echo "Step 4: Creating build metadata..."
 cat > "$WORKSPACE_DIR/build-info.txt" << EOF
 Combined Node.js extension layer (built from local source)

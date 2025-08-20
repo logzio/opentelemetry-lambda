@@ -1,4 +1,4 @@
-name: E2E - Python Layer
+name: E2E - Node.js Layer
 
 on:
   workflow_dispatch:
@@ -12,6 +12,10 @@ on:
         required: false
         default: "us-east-1"
 
+  push:
+    branches:
+      - feat/unified-lambda-layer
+
 permissions:
   contents: read
 
@@ -19,9 +23,9 @@ env:
   AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
   AWS_DEFAULT_REGION: ${{ inputs.aws_region || 'us-east-1' }}
   ARCHITECTURE: amd64
-  FUNCTION_NAME: one-layer-e2e-test-python
-  LAYER_BASE_NAME: otel-python-extension-e2e
-  SERVICE_NAME: logzio-e2e-python-service
+  FUNCTION_NAME: one-layer-e2e-test-nodejs
+  LAYER_BASE_NAME: otel-nodejs-extension-e2e
+  SERVICE_NAME: logzio-e2e-nodejs-service
   LOGZIO_REGION: us
 
 jobs:
@@ -36,19 +40,21 @@ jobs:
         with:
           go-version-file: collector/go.mod
 
-      - name: Set up Docker
-        uses: crazy-max/ghaction-setup-docker@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Build combined Python layer (amd64)
+      - name: Build combined Node.js layer (amd64)
         run: |
-          cd python/src
+          cd nodejs/packages/layer
           ARCHITECTURE=${ARCHITECTURE} ./build-combined.sh
 
       - name: Upload layer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: otel-python-extension-layer.zip
-          path: python/src/build/otel-python-extension-layer.zip
+          name: otel-nodejs-extension-layer.zip
+          path: nodejs/packages/layer/build/otel-nodejs-extension-layer.zip
 
   publish-update-invoke:
     runs-on: ubuntu-latest
@@ -63,7 +69,7 @@ jobs:
       - name: Download layer artifact
         uses: actions/download-artifact@v4
         with:
-          name: otel-python-extension-layer.zip
+          name: otel-nodejs-extension-layer.zip
 
       - name: Configure AWS (User Credentials)
         uses: aws-actions/configure-aws-credentials@v4
@@ -82,15 +88,15 @@ jobs:
             --layer-name "$LAYER_NAME" \
             --license-info "Apache-2.0" \
             --compatible-architectures x86_64 \
-            --compatible-runtimes python3.9 python3.10 python3.11 python3.12 python3.13 \
-            --zip-file fileb://otel-python-extension-layer.zip \
+            --compatible-runtimes nodejs18.x nodejs20.x \
+            --zip-file fileb://otel-nodejs-extension-layer.zip \
             --query 'LayerVersionArn' --output text)
           echo "layer_arn=$ARN" >> "$GITHUB_OUTPUT"
 
       - name: Prepare variables
         id: vars
         run: |
-          echo "e2e_label=python-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo "e2e_label=nodejs-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Check function exists and get current config
         run: |
@@ -99,8 +105,7 @@ jobs:
             echo "❌ Function ${FUNCTION_NAME} does not exist or is not accessible."
             exit 1
           }
-  
-          
+
           echo "Current environment variables:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'Environment.Variables' --output json || echo "No environment variables set"
 
@@ -111,10 +116,10 @@ jobs:
             --function-name "${FUNCTION_NAME}" \
             --layers "${{ steps.publish.outputs.layer_arn }}" \
             --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
-          
+
           echo "Waiting for function update to complete..."
           aws lambda wait function-updated --function-name "${FUNCTION_NAME}"
-          
+
           echo "Updated configuration:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Layers:Layers[].Arn,Environment:Environment.Variables}' --output json
 
@@ -125,7 +130,7 @@ jobs:
           echo "First invocation response:"
           cat response1.json
           echo ""
-          
+
           echo "Invoking function second time..."
           aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response2.json
           echo "Second invocation response:"
@@ -157,7 +162,7 @@ jobs:
         run: |
           echo "Checking recent CloudWatch logs for the function..."
           LOG_GROUP_NAME="/aws/lambda/${FUNCTION_NAME}"
-          
+
           # Get recent log events (last 5 minutes)
           aws logs filter-log-events \
             --log-group-name "$LOG_GROUP_NAME" \
@@ -190,7 +195,7 @@ jobs:
           LOGZIO_METRICS_QUERY_URL: ${{ inputs.logzio_api_url || 'https://api.logz.io' }}
           LOGZIO_API_TRACES_KEY: ${{ secrets.LOGZIO_API_TRACES_KEY }}
           E2E_TEST_ENVIRONMENT_LABEL: ${{ needs.publish-update-invoke.outputs.e2e_label }}
-          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-python
+          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-nodejs
           EXPECTED_SERVICE_NAME: ${{ env.SERVICE_NAME }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           AWS_REGION: ${{ env.AWS_REGION }}
