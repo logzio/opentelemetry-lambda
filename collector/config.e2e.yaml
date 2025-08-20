@@ -31,18 +31,38 @@ processors:
         action: delete
   
 exporters:
-  debug:
-    verbosity: detailed
   logzio/logs:
     account_token: "${env:LOGZIO_LOGS_TOKEN}"
     region: "${env:LOGZIO_REGION}"
     headers:
       user-agent: logzio-opentelemetry-layer-logs
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 0s
+    queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 512
+
   logzio/traces:
     account_token: "${env:LOGZIO_TRACES_TOKEN}"
     region: "${env:LOGZIO_REGION}"
     headers:
       user-agent: logzio-opentelemetry-layer-traces
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 0s
+    queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 512
+
   prometheusremotewrite:
     endpoint: "https://listener.logz.io:8053"
     headers:
@@ -50,23 +70,13 @@ exporters:
       user-agent: logzio-opentelemetry-layer-metrics
     target_info:
       enabled: false
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp, telemetryapireceiver]
-      processors: [resource/drop_array_tags, attributes/drop_array_tags, batch]
-      exporters: [logzio/traces]
-    metrics:
-      receivers: [otlp, telemetryapireceiver]
-      processors: [batch]
-      exporters: [prometheusremotewrite]
-    logs:
-      receivers: [telemetryapireceiver]
-      processors: [batch]
-      exporters: [logzio/logs]
-  telemetry:
-    logs:
-      level: "info"
-
-
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 0s
+    queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 512
