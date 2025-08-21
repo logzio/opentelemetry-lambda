@@ -55,6 +55,9 @@ mkdir -p "$BUILD_DIR/combined-layer/extensions"
 mkdir -p "$BUILD_DIR/combined-layer/collector-config"
 cp "$COLLECTOR_DIR/build/extensions"/* "$BUILD_DIR/combined-layer/extensions/"
 cp "$COLLECTOR_DIR/config.yaml" "$BUILD_DIR/combined-layer/collector-config/"
+if [ -f "$COLLECTOR_DIR/config.e2e.yaml" ]; then
+  cp "$COLLECTOR_DIR/config.e2e.yaml" "$BUILD_DIR/combined-layer/collector-config/"
+fi
 
 echo "Step 3: Optional: slimming Ruby gems (set KEEP_RUBY_GEM_VERSIONS=3.4.0,3.3.0 to keep specific versions)..."
 if [ -n "${KEEP_RUBY_GEM_VERSIONS:-}" ]; then

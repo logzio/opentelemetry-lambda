@@ -1,4 +1,4 @@
-name: E2E - Java Layer
+name: E2E - Ruby Layer
 
 on:
   workflow_dispatch:
@@ -12,6 +12,9 @@ on:
         required: false
         default: "us-east-1"
 
+  push:
+    branches:
+      - feat/unified-lambda-layer
 
 permissions:
   contents: read
@@ -20,9 +23,9 @@ env:
   AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
   AWS_DEFAULT_REGION: ${{ inputs.aws_region || 'us-east-1' }}
   ARCHITECTURE: amd64
-  FUNCTION_NAME: one-layer-e2e-test-java
-  LAYER_BASE_NAME: otel-java-extension-e2e
-  SERVICE_NAME: logzio-e2e-java-service
+  FUNCTION_NAME: one-layer-e2e-test-ruby
+  LAYER_BASE_NAME: otel-ruby-extension-e2e
+  SERVICE_NAME: logzio-e2e-ruby-service
   LOGZIO_REGION: us
 
 jobs:
@@ -37,23 +40,19 @@ jobs:
         with:
           go-version-file: collector/go.mod
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-          cache: 'gradle'
+      - name: Set up Docker
+        uses: crazy-max/ghaction-setup-docker@v3
 
-      - name: Build combined Java layer (amd64)
+      - name: Build combined Ruby layer (amd64)
         run: |
-          cd java
+          cd ruby
           ARCHITECTURE=${ARCHITECTURE} ./build-combined.sh
 
       - name: Upload layer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: otel-java-extension-layer.zip
-          path: java/build/otel-java-extension-layer-${{ env.ARCHITECTURE }}.zip
+          name: otel-ruby-extension-layer.zip
+          path: ruby/build/otel-ruby-extension-layer.zip
 
   publish-update-invoke:
     runs-on: ubuntu-latest
@@ -68,7 +67,7 @@ jobs:
       - name: Download layer artifact
         uses: actions/download-artifact@v4
         with:
-          name: otel-java-extension-layer.zip
+          name: otel-ruby-extension-layer.zip
 
       - name: Configure AWS (User Credentials)
         uses: aws-actions/configure-aws-credentials@v4
@@ -83,20 +82,19 @@ jobs:
         run: |
           set -euo pipefail
           LAYER_NAME="${LAYER_BASE_NAME}-amd64"
-          ZIP_FILE="otel-java-extension-layer-${ARCHITECTURE}.zip"
           ARN=$(aws lambda publish-layer-version \
             --layer-name "$LAYER_NAME" \
             --license-info "Apache-2.0" \
             --compatible-architectures x86_64 \
-            --compatible-runtimes java11 java17 java21 \
-            --zip-file fileb://$ZIP_FILE \
+            --compatible-runtimes ruby3.2 ruby3.3 \
+            --zip-file fileb://otel-ruby-extension-layer.zip \
             --query 'LayerVersionArn' --output text)
           echo "layer_arn=$ARN" >> "$GITHUB_OUTPUT"
 
       - name: Prepare variables
         id: vars
         run: |
-          echo "e2e_label=java-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo "e2e_label=ruby-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Check function exists and get current config
         run: |
@@ -105,7 +103,7 @@ jobs:
             echo "❌ Function ${FUNCTION_NAME} does not exist or is not accessible."
             exit 1
           }
-
+  
           echo "Current environment variables:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'Environment.Variables' --output json || echo "No environment variables set"
 
@@ -115,11 +113,11 @@ jobs:
           aws lambda update-function-configuration \
             --function-name "${FUNCTION_NAME}" \
             --layers "${{ steps.publish.outputs.layer_arn }}" \
-            --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,JAVA_TOOL_OPTIONS=-javaagent:/opt/opentelemetry-javaagent.jar,OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_TRACES_EXPORTER=otlp,OTEL_METRICS_EXPORTER=otlp,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
-
+            --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
+          
           echo "Waiting for function update to complete..."
           aws lambda wait function-updated --function-name "${FUNCTION_NAME}"
-
+          
           echo "Updated configuration:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Layers:Layers[].Arn,Environment:Environment.Variables}' --output json
 
@@ -130,13 +128,13 @@ jobs:
           echo "First invocation response:"
           cat response1.json
           echo ""
-
+          
           echo "Invoking function second time..."
           aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response2.json
           echo "Second invocation response:"
           cat response2.json
           echo ""
-
+          
           echo "Sleeping for 5 seconds before additional invocations..."
           sleep 5
 
@@ -162,7 +160,7 @@ jobs:
         run: |
           echo "Checking recent CloudWatch logs for the function..."
           LOG_GROUP_NAME="/aws/lambda/${FUNCTION_NAME}"
-
+          
           # Get recent log events (last 5 minutes)
           aws logs filter-log-events \
             --log-group-name "$LOG_GROUP_NAME" \
@@ -195,7 +193,7 @@ jobs:
           LOGZIO_METRICS_QUERY_URL: ${{ inputs.logzio_api_url || 'https://api.logz.io' }}
           LOGZIO_API_TRACES_KEY: ${{ secrets.LOGZIO_API_TRACES_KEY }}
           E2E_TEST_ENVIRONMENT_LABEL: ${{ needs.publish-update-invoke.outputs.e2e_label }}
-          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-java
+          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-ruby
           EXPECTED_SERVICE_NAME: ${{ env.SERVICE_NAME }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           AWS_REGION: ${{ env.AWS_REGION }}
