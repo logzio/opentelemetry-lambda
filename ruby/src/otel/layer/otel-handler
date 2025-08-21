@@ -3,52 +3,6 @@
 export ORIG_HANDLER="$_HANDLER";
 export _HANDLER="/opt/wrapper.otel_wrapper";
 
-
-# Ensure Lambda can find gems shipped in the layer first
-# Extract Ruby version from the runtime environment
-if [ -n "$AWS_EXECUTION_ENV" ]; then
-    # Extract version from AWS_EXECUTION_ENV (e.g., AWS_Lambda_ruby3.4)
-    RUBY_VERSION_MAJOR_MINOR=$(echo "$AWS_EXECUTION_ENV" | grep -o 'ruby[0-9]\.[0-9]' | sed 's/ruby//')
-fi
-
-# Fallback: Try to detect from available directories
-if [ -z "$RUBY_VERSION_MAJOR_MINOR" ]; then
-    # Look for the ruby gems directory that exists
-    for version in 3.4 3.3 3.2; do
-        if [ -d "/opt/ruby/gems/${version}.0" ]; then
-            RUBY_VERSION_MAJOR_MINOR="${version}"
-            break
-        fi
-    done
-fi
-
-# Final fallback
-if [ -z "$RUBY_VERSION_MAJOR_MINOR" ]; then
-    RUBY_VERSION_MAJOR_MINOR="3.4"
-fi
-
-# For Ruby, we need the full version (e.g., 3.4.0)
-RUBY_FULL_VERSION_DIR="/opt/ruby/gems/${RUBY_VERSION_MAJOR_MINOR}.0"
-export GEM_PATH="${RUBY_FULL_VERSION_DIR}:${GEM_PATH:-}"
-export GEM_HOME="${RUBY_FULL_VERSION_DIR}"
-
-# Ensure rubygems is preloaded and Ruby can find libs within gem directories
-export RUBYOPT="${RUBYOPT:--rrubygems}"
-# Build RUBYLIB as a colon-separated list of each gem's lib directory
-LIBS=""
-for d in "${RUBY_FULL_VERSION_DIR}"/gems/*/lib; do
-  if [ -d "$d" ]; then
-    if [ -z "$LIBS" ]; then
-      LIBS="$d"
-    else
-      LIBS="$LIBS:$d"
-    fi
-  fi
-done
-if [ -n "$LIBS" ]; then
-  export RUBYLIB="${LIBS}:${RUBYLIB:-}"
-fi
-
 if [ -z "${OTEL_SERVICE_NAME}" ]; then
     export OTEL_SERVICE_NAME="$AWS_LAMBDA_FUNCTION_NAME";
 fi

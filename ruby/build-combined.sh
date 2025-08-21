@@ -132,3 +132,27 @@ echo "Layer contents:"
 unzip -l "$BUILD_DIR/otel-ruby-extension-layer.zip" | head -20
 
 echo "Build completed successfully!"
+
+# Optional: Build function code package with bundled gems if Bundler is available
+if command -v bundle >/dev/null 2>&1; then
+  echo "Building Ruby function package with bundled gems..."
+  FUNC_SRC_DIR="$SCRIPT_DIR/function"
+  FUNC_BUILD_DIR="$BUILD_DIR/function"
+  rm -rf "$FUNC_BUILD_DIR"
+  mkdir -p "$FUNC_BUILD_DIR"
+  cp "$FUNC_SRC_DIR/lambda_function.rb" "$FUNC_BUILD_DIR/" 2>/dev/null || true
+  cp "$FUNC_SRC_DIR/Gemfile" "$FUNC_BUILD_DIR/" 2>/dev/null || true
+  (
+    cd "$FUNC_BUILD_DIR"
+    if [ -f Gemfile ]; then
+      bundle config set --local path 'vendor/bundle'
+      bundle install --without development test
+      zip -qr -9 -X ../otel-ruby-function.zip lambda_function.rb Gemfile Gemfile.lock vendor || true
+      echo "Function package created: $BUILD_DIR/otel-ruby-function.zip"
+    else
+      echo "No Gemfile found in $FUNC_SRC_DIR; skipping function package build."
+    fi
+  )
+else
+  echo "Bundler not available on host; skipping function package build."
+fi
