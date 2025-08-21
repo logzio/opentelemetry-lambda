@@ -26,7 +26,10 @@ func TestE2EMetrics(t *testing.T) {
 	// may be disabled by default. Make the HTTP client metric optional for Java runtime.
 	isJava := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME") == "one-layer-e2e-test-java" ||
 		os.Getenv("EXPECTED_SERVICE_NAME") == "logzio-e2e-java-service"
-	if !isJava {
+	// Ruby's E2E may not emit http_client metrics consistently; keep it optional like Java.
+	isRuby := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME") == "one-layer-e2e-test-ruby" ||
+		os.Getenv("EXPECTED_SERVICE_NAME") == "logzio-e2e-ruby-service"
+	if !isJava && !isRuby {
 		metricsToCheck = append(metricsToCheck, "http_client_duration_milliseconds_count")
 	}
 

@@ -27,6 +27,11 @@ func TestE2ETraces(t *testing.T) {
 	isJava := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME") == "one-layer-e2e-test-java" ||
 		os.Getenv("EXPECTED_SERVICE_NAME") == "logzio-e2e-java-service"
 
+	// Ruby Net::HTTP instrumentation may emit internal spans (e.g., "connect").
+	// Accept either client spans or internal spans specifically from Net::HTTP.
+	isRuby := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME") == "one-layer-e2e-test-ruby" ||
+		os.Getenv("EXPECTED_SERVICE_NAME") == "logzio-e2e-ruby-service"
+
 	baseQueryWithFaas := fmt.Sprintf(`type:jaegerSpan AND process.serviceName:"%s" AND process.tag.faas@name:"%s"`, expectedServiceName, expectedFaasName)
 	baseQueryServiceOnly := fmt.Sprintf(`type:jaegerSpan AND process.serviceName:"%s"`, expectedServiceName)
 
@@ -48,7 +53,12 @@ func TestE2ETraces(t *testing.T) {
 		// Relax for Java: some client spans may not carry faas.name
 		clientBase = baseQueryServiceOnly
 	}
-	clientQuery := clientBase + " AND JaegerTag.span@kind:client"
+	var clientQuery string
+	if isRuby {
+		clientQuery = clientBase + " AND (JaegerTag.span@kind:client OR (JaegerTag.span@kind:internal AND JaegerTag.otel@scope@name:\"OpenTelemetry::Instrumentation::Net::HTTP\"))"
+	} else {
+		clientQuery = clientBase + " AND JaegerTag.span@kind:client"
+	}
 	e2eLogger.Infof("Querying for client spans: %s", clientQuery)
 	clientResp, err := fetchLogzSearchAPI(t, tracesQueryKey, logzioAPIURL, clientQuery, "traces")
 	require.NoError(t, err, "Failed to find client spans after all retries.")
