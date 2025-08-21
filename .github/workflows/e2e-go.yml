@@ -1,4 +1,4 @@
-name: E2E - Ruby Layer
+name: E2E - Go Layer
 
 on:
   workflow_dispatch:
@@ -12,6 +12,10 @@ on:
         required: false
         default: "us-east-1"
 
+  push:
+    branches:
+      - feat/unified-lambda-layer
+
 permissions:
   contents: read
 
@@ -19,9 +23,9 @@ env:
   AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
   AWS_DEFAULT_REGION: ${{ inputs.aws_region || 'us-east-1' }}
   ARCHITECTURE: amd64
-  FUNCTION_NAME: one-layer-e2e-test-ruby
-  LAYER_BASE_NAME: otel-ruby-extension-e2e
-  SERVICE_NAME: logzio-e2e-ruby-service
+  FUNCTION_NAME: one-layer-e2e-test-go
+  LAYER_BASE_NAME: otel-go-extension-e2e
+  SERVICE_NAME: logzio-e2e-go-service
   LOGZIO_REGION: us
 
 jobs:
@@ -36,23 +40,16 @@ jobs:
         with:
           go-version-file: collector/go.mod
 
-      - name: Set up Docker
-        uses: crazy-max/ghaction-setup-docker@v3
-
-      - name: Build combined Ruby layer (amd64)
+      - name: Build combined Go layer (amd64)
         run: |
-          cd ruby
-          KEEP_RUBY_GEM_VERSIONS=3.4.0 ARCHITECTURE=${ARCHITECTURE} ./build-combined.sh
-
-      - name: Show layer artifact size
-        run: |
-          ls -lh ruby/build/otel-ruby-extension-layer.zip || true
+          cd go
+          ARCHITECTURE=${ARCHITECTURE} ./build-combined.sh
 
       - name: Upload layer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: otel-ruby-extension-layer.zip
-          path: ruby/build/otel-ruby-extension-layer.zip
+          name: otel-go-extension-layer.zip
+          path: go/build/otel-go-extension-layer.zip
 
   publish-update-invoke:
     runs-on: ubuntu-latest
@@ -67,7 +64,7 @@ jobs:
       - name: Download layer artifact
         uses: actions/download-artifact@v4
         with:
-          name: otel-ruby-extension-layer.zip
+          name: otel-go-extension-layer.zip
 
       - name: Configure AWS (User Credentials)
         uses: aws-actions/configure-aws-credentials@v4
@@ -86,15 +83,15 @@ jobs:
             --layer-name "$LAYER_NAME" \
             --license-info "Apache-2.0" \
             --compatible-architectures x86_64 \
-            --compatible-runtimes ruby3.4 \
-            --zip-file fileb://otel-ruby-extension-layer.zip \
+            --compatible-runtimes provided provided.al2 \
+            --zip-file fileb://otel-go-extension-layer.zip \
             --query 'LayerVersionArn' --output text)
           echo "layer_arn=$ARN" >> "$GITHUB_OUTPUT"
 
       - name: Prepare variables
         id: vars
         run: |
-          echo "e2e_label=ruby-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo "e2e_label=go-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Check function exists and get current config
         run: |
@@ -103,7 +100,7 @@ jobs:
             echo "❌ Function ${FUNCTION_NAME} does not exist or is not accessible."
             exit 1
           }
-  
+          
           echo "Current environment variables:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'Environment.Variables' --output json || echo "No environment variables set"
 
@@ -113,7 +110,7 @@ jobs:
           aws lambda update-function-configuration \
             --function-name "${FUNCTION_NAME}" \
             --layers "${{ steps.publish.outputs.layer_arn }}" \
-            --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_RUBY_INSTRUMENTATION_NET_HTTP_ENABLED=true,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
+            --environment "Variables={OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
           
           echo "Waiting for function update to complete..."
           aws lambda wait function-updated --function-name "${FUNCTION_NAME}"
@@ -137,19 +134,19 @@ jobs:
           
           echo "Sleeping for 5 seconds before additional invocations..."
           sleep 5
-
+          
           echo "Invoking function third time..."
           aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response3.json
           echo "Third invocation response:"
           cat response3.json
           echo ""
-
+          
           echo "Invoking function fourth time..."
           aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response4.json
           echo "Fourth invocation response:"
           cat response4.json
           echo ""
-
+          
           echo "Invoking function fifth time..."
           aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response5.json
           echo "Fifth invocation response:"
@@ -193,7 +190,7 @@ jobs:
           LOGZIO_METRICS_QUERY_URL: ${{ inputs.logzio_api_url || 'https://api.logz.io' }}
           LOGZIO_API_TRACES_KEY: ${{ secrets.LOGZIO_API_TRACES_KEY }}
           E2E_TEST_ENVIRONMENT_LABEL: ${{ needs.publish-update-invoke.outputs.e2e_label }}
-          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-ruby
+          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-go
           EXPECTED_SERVICE_NAME: ${{ env.SERVICE_NAME }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           AWS_REGION: ${{ env.AWS_REGION }}
