@@ -59,6 +59,18 @@ if [ -f "$COLLECTOR_DIR/config.e2e.yaml" ]; then
   cp "$COLLECTOR_DIR/config.e2e.yaml" "$BUILD_DIR/combined-layer/collector-config/"
 fi
 
+# Strip collector binaries to reduce size (best-effort)
+echo "Stripping collector binaries (if possible) to reduce size..."
+if command -v strip >/dev/null 2>&1; then
+  for bin in "$BUILD_DIR/combined-layer/extensions"/*; do
+    if [ -f "$bin" ] && command -v file >/dev/null 2>&1 && file "$bin" | grep -q "ELF"; then
+      strip "$bin" || true
+    fi
+  done
+else
+  echo "strip not available; skipping binary stripping"
+fi
+
 echo "Step 3: Optional: slimming Ruby gems (set KEEP_RUBY_GEM_VERSIONS=3.4.0,3.3.0 to keep specific versions)..."
 if [ -n "${KEEP_RUBY_GEM_VERSIONS:-}" ]; then
   IFS=',' read -r -a keep_list <<< "$KEEP_RUBY_GEM_VERSIONS"
@@ -85,11 +97,34 @@ echo "Combined layer built on $(date)" > build-info.txt
 echo "Architecture: $ARCHITECTURE" >> build-info.txt
 echo "Collector version: $(cat $COLLECTOR_DIR/VERSION 2>/dev/null || echo 'unknown')" >> build-info.txt
 
+# Additional slimming: remove non-essential Ruby gem folders (docs/tests/examples)
+echo "Pruning non-essential Ruby gem directories (docs/tests/examples)..."
+if [ -d "ruby/gems" ]; then
+  find ruby/gems -type d \
+    \( -name doc -o -name docs -o -name rdoc -o -name test -o -name tests -o -name spec -o -name examples -o -name example -o -name benchmark -o -name benchmarks \) \
+    -prune -exec rm -rf {} + || true
+fi
+
+# Prune common development/build artifacts to reduce size further
+echo "Removing development artifacts (*.a, *.o, headers, pkgconfig, cache)..."
+find . -type f \( -name "*.a" -o -name "*.la" -o -name "*.o" -o -name "*.h" -o -name "*.c" -o -name "*.cc" -o -name "*.cpp" \) -delete 2>/dev/null || true
+find . -type d \( -name include -o -name pkgconfig -o -name cache -o -name Cache -o -name tmp \) -prune -exec rm -rf {} + 2>/dev/null || true
+
+# Strip Ruby native extension .so files (ELF) to reduce size
+if command -v strip >/dev/null 2>&1 && command -v file >/dev/null 2>&1; then
+  echo "Stripping Ruby native extension .so files..."
+  find . -type f -name "*.so" -print0 | while IFS= read -r -d '' sofile; do
+    if file "$sofile" | grep -q "ELF"; then
+      strip "$sofile" || true
+    fi
+  done
+fi
+
 # Ensure handler is executable
 chmod +x otel-handler || true
 
-# Package so that zip root maps directly to /opt
-zip -qr ../otel-ruby-extension-layer.zip .
+# Package with maximum compression so that zip root maps directly to /opt
+zip -qr -9 -X ../otel-ruby-extension-layer.zip .
 cd "$SCRIPT_DIR"
 
 echo "Combined Ruby extension layer created: $BUILD_DIR/otel-ruby-extension-layer.zip"

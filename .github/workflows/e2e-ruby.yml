@@ -46,7 +46,11 @@ jobs:
       - name: Build combined Ruby layer (amd64)
         run: |
           cd ruby
-          ARCHITECTURE=${ARCHITECTURE} ./build-combined.sh
+          KEEP_RUBY_GEM_VERSIONS=3.4.0 ARCHITECTURE=${ARCHITECTURE} ./build-combined.sh
+
+      - name: Show layer artifact size
+        run: |
+          ls -lh ruby/build/otel-ruby-extension-layer.zip || true
 
       - name: Upload layer artifact
         uses: actions/upload-artifact@v4
@@ -86,7 +90,7 @@ jobs:
             --layer-name "$LAYER_NAME" \
             --license-info "Apache-2.0" \
             --compatible-architectures x86_64 \
-            --compatible-runtimes ruby3.2 ruby3.3 \
+            --compatible-runtimes ruby3.4 \
             --zip-file fileb://otel-ruby-extension-layer.zip \
             --query 'LayerVersionArn' --output text)
           echo "layer_arn=$ARN" >> "$GITHUB_OUTPUT"
