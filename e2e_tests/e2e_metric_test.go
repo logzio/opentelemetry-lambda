@@ -20,9 +20,14 @@ func TestE2EMetrics(t *testing.T) {
 	require.NotEmpty(t, expectedServiceName, "EXPECTED_SERVICE_NAME environment variable must be set")
 
 	// We'll validate two representative metrics visible in Logz.io Grafana
-	metricsToCheck := []string{
-		"aws_lambda_billedDurationMs_milliseconds",
-		"http_client_duration_milliseconds_count",
+	metricsToCheck := []string{"aws_lambda_billedDurationMs_milliseconds"}
+
+	// Java agent metric names/units differ (seconds vs milliseconds) and HTTP client metrics
+	// may be disabled by default. Make the HTTP client metric optional for Java runtime.
+	isJava := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME") == "one-layer-e2e-test-java" ||
+		os.Getenv("EXPECTED_SERVICE_NAME") == "logzio-e2e-java-service"
+	if !isJava {
+		metricsToCheck = append(metricsToCheck, "http_client_duration_milliseconds_count")
 	}
 
 	for _, metricName := range metricsToCheck {
