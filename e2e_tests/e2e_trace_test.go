@@ -27,6 +27,11 @@ func TestE2ETraces(t *testing.T) {
 	isJava := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME") == "one-layer-e2e-test-java" ||
 		os.Getenv("EXPECTED_SERVICE_NAME") == "logzio-e2e-java-service"
 
+	// Go handler emits an internal span from scope "logzio-go-lambda-example" for the HTTP call.
+	// Accept internal spans from that scope as valid client activity and relax faas.name like Java.
+	isGo := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME") == "one-layer-e2e-test-go" ||
+		os.Getenv("EXPECTED_SERVICE_NAME") == "logzio-e2e-go-service"
+
 	// Ruby Net::HTTP instrumentation may emit internal spans (e.g., "connect").
 	// Accept either client spans or internal spans specifically from Net::HTTP.
 	isRuby := os.Getenv("EXPECTED_LAMBDA_FUNCTION_NAME") == "one-layer-e2e-test-ruby" ||
@@ -49,13 +54,16 @@ func TestE2ETraces(t *testing.T) {
 	// Verify at least one custom/client span exists
 	// Verify at least one client span exists
 	clientBase := baseQueryWithFaas
-	if isJava {
+	if isJava || isGo {
 		// Relax for Java: some client spans may not carry faas.name
+		// Also relax for Go: internal spans from the custom scope may not include faas.name
 		clientBase = baseQueryServiceOnly
 	}
 	var clientQuery string
 	if isRuby {
 		clientQuery = clientBase + " AND (JaegerTag.span@kind:client OR (JaegerTag.span@kind:internal AND JaegerTag.otel@scope@name:\"OpenTelemetry::Instrumentation::Net::HTTP\"))"
+	} else if isGo {
+		clientQuery = clientBase + " AND (JaegerTag.span@kind:client OR (JaegerTag.span@kind:internal AND JaegerTag.otel@scope@name:\"logzio-go-lambda-example\"))"
 	} else {
 		clientQuery = clientBase + " AND JaegerTag.span@kind:client"
 	}
