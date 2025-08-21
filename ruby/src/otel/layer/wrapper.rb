@@ -1,6 +1,6 @@
-require 'opentelemetry-sdk'
-require 'opentelemetry-exporter-otlp'
-require 'opentelemetry-instrumentation-all'
+require 'opentelemetry/sdk'
+require 'opentelemetry/exporter/otlp'
+require 'opentelemetry/instrumentation/all'
 
 # We need to load the function code's dependencies, and _before_ any dependencies might
 # be initialized outside of the function handler, bootstrap instrumentation.

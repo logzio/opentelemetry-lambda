@@ -28,7 +28,14 @@ if [ -z "$RUBY_VERSION_MAJOR_MINOR" ]; then
 fi
 
 # For Ruby, we need the full version (e.g., 3.4.0)
-export GEM_PATH="/opt/ruby/gems/${RUBY_VERSION_MAJOR_MINOR}.0:${GEM_PATH:-}"
+RUBY_FULL_VERSION_DIR="/opt/ruby/gems/${RUBY_VERSION_MAJOR_MINOR}.0"
+export GEM_PATH="${RUBY_FULL_VERSION_DIR}:${GEM_PATH:-}"
+export GEM_HOME="${RUBY_FULL_VERSION_DIR}"
+
+# Ensure rubygems is preloaded and Ruby can find libs within gem directories
+export RUBYOPT="${RUBYOPT:--rrubygems}"
+# Add each gem's lib directory to RUBYLIB for extra safety (expanded at shell time)
+export RUBYLIB="${RUBY_FULL_VERSION_DIR}/gems/*/lib:${RUBYLIB:-}"
 
 if [ -z "${OTEL_SERVICE_NAME}" ]; then
     export OTEL_SERVICE_NAME="$AWS_LAMBDA_FUNCTION_NAME";
