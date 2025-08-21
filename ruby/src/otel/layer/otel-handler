@@ -34,8 +34,20 @@ export GEM_HOME="${RUBY_FULL_VERSION_DIR}"
 
 # Ensure rubygems is preloaded and Ruby can find libs within gem directories
 export RUBYOPT="${RUBYOPT:--rrubygems}"
-# Add each gem's lib directory to RUBYLIB for extra safety (expanded at shell time)
-export RUBYLIB="${RUBY_FULL_VERSION_DIR}/gems/*/lib:${RUBYLIB:-}"
+# Build RUBYLIB as a colon-separated list of each gem's lib directory
+LIBS=""
+for d in "${RUBY_FULL_VERSION_DIR}"/gems/*/lib; do
+  if [ -d "$d" ]; then
+    if [ -z "$LIBS" ]; then
+      LIBS="$d"
+    else
+      LIBS="$LIBS:$d"
+    fi
+  fi
+done
+if [ -n "$LIBS" ]; then
+  export RUBYLIB="${LIBS}:${RUBYLIB:-}"
+fi
 
 if [ -z "${OTEL_SERVICE_NAME}" ]; then
     export OTEL_SERVICE_NAME="$AWS_LAMBDA_FUNCTION_NAME";

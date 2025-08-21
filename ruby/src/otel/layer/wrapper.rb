@@ -1,3 +1,25 @@
+# Ensure gem libs are on the load path in case environment hooks are ignored
+require 'rubygems'
+
+begin
+  gem_root = ENV['GEM_PATH'] || ENV['GEM_HOME']
+  if gem_root && Dir.exist?(gem_root)
+    # Ensure RubyGems knows about our layer paths
+    begin
+      default_paths = Gem.default_path
+      Gem.use_paths(ENV['GEM_HOME'] || gem_root, [gem_root, *default_paths].uniq)
+      Gem.refresh
+    rescue StandardError
+      # ignore, we still amend $LOAD_PATH manually below
+    end
+    Dir.glob(File.join(gem_root, 'gems', '*', 'lib')).each do |dir|
+      $LOAD_PATH.unshift(dir) unless $LOAD_PATH.include?(dir)
+    end
+  end
+rescue StandardError
+  # no-op: fall through to requires; errors will surface if libs are missing
+end
+
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/all'
