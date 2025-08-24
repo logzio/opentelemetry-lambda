@@ -17,18 +17,28 @@ There are 2 types of lambda layers
 
 These 2 layers are meant to be used in conjunction to instrument your lambda functions. The reason that the collector is not embedded in specific language layers is to give users flexibility
 
+## Combined Layers (New)
+
+**Simplified Deployment**: We now offer combined layers that bundle both the language-specific instrumentation and the collector into a single layer. This approach:
+- Reduces the number of layers from 2 to 1
+- Simplifies configuration and deployment
+- Maintains all the functionality of the separate layers
+- Is available for Python, Node.js, Java, Ruby, and Go
+
+Combined layers are ideal for users who want a simpler deployment model without sacrificing functionality. For detailed information about combined layers, see the language-specific README files below.
+
 ## Collector Layer
 * ### [Collector Lambda Layer](collector/README.md)
 
 ## Extension Layer Language Support
-* ### [Python Lambda Layer](python/README.md)
-* ### [Java Lambda Layer](java/README.md)
-* ### [NodeJS Lambda Layer](nodejs/README.md)
-* ### [Ruby Lambda Layer](ruby/README.md)
+* ### [Python Lambda Layer](python/README.md) - *Combined layer available*
+* ### [Java Lambda Layer](java/README.md) - *Combined layer available*
+* ### [NodeJS Lambda Layer](nodejs/README.md) - *Combined layer available*
+* ### [Ruby Lambda Layer](ruby/README.md) - *Combined layer available*
 
 ## Additional language tooling not currently supported
-* ### [Go Lambda Library](go/README.md)
-* ### [.NET Lambda Layer](dotnet/README.md)
+* ### [Go Lambda Library](go/README.md) - *Combined layer available (collector only)*
+* ### [.NET Lambda Layer](dotnet/README.md) 
 
 ## Latest Layer Versions
 | Name         | ARN                                                                                                                    | Version |
