@@ -12,10 +12,6 @@ on:
         required: false
         default: "us-east-1"
 
-  push:
-    branches:
-        - feat/unified-lambda-layer
-
 permissions:
   contents: read
 

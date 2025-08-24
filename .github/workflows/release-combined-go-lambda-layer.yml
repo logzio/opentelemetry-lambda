@@ -1,9 +1,9 @@
-name: "Release Combined Python Lambda Layer"
+name: "Release Combined Go Lambda Layer"
 
 on:
   push:
     tags:
-      - combined-layer-python/**
+      - combined-layer-go/**
 
 permissions:
   contents: read
@@ -39,25 +39,25 @@ jobs:
 
       - name: Build Combined Layer
         run: |
-          cd python/src
+          cd go
           ARCHITECTURE=${{ matrix.architecture }} ./build-combined.sh
         env:
           ARCHITECTURE: ${{ matrix.architecture }}
 
       - name: Rename zip file for architecture
         run: |
-          mv build/otel-python-extension-layer.zip build/otel-python-extension-layer-${{ matrix.architecture }}.zip
-        working-directory: python/src
+          mv build/otel-go-extension-layer.zip build/otel-go-extension-layer-${{ matrix.architecture }}.zip
+        working-directory: go
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         name: Save assembled combined layer to build
         with:
-          name: otel-python-extension-layer-${{ matrix.architecture }}.zip
-          path: python/src/build/otel-python-extension-layer-${{ matrix.architecture }}.zip
+          name: otel-go-extension-layer-${{ matrix.architecture }}.zip
+          path: go/build/otel-go-extension-layer-${{ matrix.architecture }}.zip
           
       - name: Add Binary to Release
         run: |
-          gh release upload ${{github.ref_name}} python/src/build/otel-python-extension-layer-${{ matrix.architecture }}.zip
+          gh release upload ${{github.ref_name}} go/build/otel-go-extension-layer-${{ matrix.architecture }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -75,11 +75,13 @@ jobs:
         aws_region:
           - us-east-1
     with:
-      artifact-name: otel-python-extension-layer-${{ matrix.architecture }}.zip
-      layer-name: otel-python-extension
+      artifact-name: otel-go-extension-layer-${{ matrix.architecture }}.zip
+      layer-name: otel-go-extension
       component-version: "combined"
       architecture: ${{ matrix.architecture }}
-      runtimes: python3.9 python3.10 python3.11 python3.12 python3.13
+      runtimes: provided.al2 provided.al2023
       release-group: prod
       aws_region: ${{ matrix.aws_region }}
     secrets: inherit
+
+
