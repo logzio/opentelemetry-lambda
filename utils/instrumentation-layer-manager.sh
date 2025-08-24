@@ -5,7 +5,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OTEL_LAMBDA_REPO="open-telemetry/opentelemetry-lambda"
 RELEASES_API="https://api.github.com/repos/${OTEL_LAMBDA_REPO}/releases"
 
@@ -60,7 +59,8 @@ download_instrumentation_layer() {
     echo "Looking for instrumentation layer for $language (prefix: $layer_prefix)"
     
     # Get latest release tag
-    local latest_tag=$(get_latest_layer_release "$layer_prefix")
+    local latest_tag
+    latest_tag=$(get_latest_layer_release "$layer_prefix")
     if [[ -z "$latest_tag" ]]; then
         echo "No releases found for $layer_prefix"
         return 1
@@ -93,7 +93,8 @@ download_instrumentation_layer() {
     esac
     
     # Get download URL
-    local download_url=$(get_layer_download_url "$latest_tag" "$asset_pattern")
+    local download_url
+    download_url=$(get_layer_download_url "$latest_tag" "$asset_pattern")
     if [[ -z "$download_url" ]]; then
         echo "No downloadable asset found for $latest_tag with pattern $asset_pattern"
         return 1

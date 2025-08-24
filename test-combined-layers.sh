@@ -96,7 +96,7 @@ test_collector_build() {
         fi
     else
         log_warn "✗ Collector combined layer build failed (may be expected if dependencies missing)"
-        cat "$TEMP_DIR/collector-combined.log" | head -20
+        head -20 "$TEMP_DIR/collector-combined.log"
     fi
     
     cd "$SCRIPT_DIR"

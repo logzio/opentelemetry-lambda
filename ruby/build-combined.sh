@@ -95,7 +95,7 @@ cd "$BUILD_DIR/combined-layer"
 # Create build metadata at layer root (root of zip maps to /opt)
 echo "Combined layer built on $(date)" > build-info.txt
 echo "Architecture: $ARCHITECTURE" >> build-info.txt
-echo "Collector version: $(cat $COLLECTOR_DIR/VERSION 2>/dev/null || echo 'unknown')" >> build-info.txt
+echo "Collector version: $(cat "$COLLECTOR_DIR/VERSION" 2>/dev/null || echo 'unknown')" >> build-info.txt
 
 # Additional slimming: remove non-essential Ruby gem folders (docs/tests/examples)
 echo "Pruning non-essential Ruby gem directories (docs/tests/examples)..."

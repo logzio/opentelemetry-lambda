@@ -41,10 +41,12 @@ echo "Step 2: Creating combined layer package..."
 cd "$BUILD_DIR/combined-layer"
 
 # Create version info file at the layer root (becomes /opt/build-info.txt)
-echo "Combined layer built on $(date)" > build-info.txt
-echo "Architecture: $ARCHITECTURE" >> build-info.txt
-echo "Collector version: $(cat $COLLECTOR_DIR/VERSION 2>/dev/null || echo 'unknown')" >> build-info.txt
-echo "Note: Go uses manual instrumentation - this layer provides the collector for Go applications" >> build-info.txt
+{
+echo "Combined layer built on $(date)"
+echo "Architecture: $ARCHITECTURE"
+echo "Collector version: $(cat "$COLLECTOR_DIR/VERSION" 2>/dev/null || echo 'unknown')"
+echo "Note: Go uses manual instrumentation - this layer provides the collector for Go applications"
+} > build-info.txt
 
 # Zip the contents of combined-layer so that extensions/ -> /opt/extensions and collector-config/ -> /opt/collector-config
 zip -qr ../otel-go-extension-layer.zip .
