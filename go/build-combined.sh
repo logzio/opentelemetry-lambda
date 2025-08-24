@@ -54,6 +54,6 @@ cd "$SCRIPT_DIR"
 
 echo "Combined Go extension layer created: $BUILD_DIR/otel-go-extension-layer.zip"
 echo "Layer contents:"
-unzip -l "$BUILD_DIR/otel-go-extension-layer.zip" | head -20
+unzip -l "$BUILD_DIR/otel-go-extension-layer.zip" | head -20 || true
 
 echo "Build completed successfully!"

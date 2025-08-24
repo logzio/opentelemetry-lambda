@@ -84,6 +84,6 @@ cd "$SCRIPT_DIR"
 echo "✅ Combined Node.js extension layer created: $BUILD_DIR/otel-nodejs-extension-layer.zip"
 echo ""
 echo "Layer contents preview:"
-unzip -l "$BUILD_DIR/otel-nodejs-extension-layer.zip" | head -20
+unzip -l "$BUILD_DIR/otel-nodejs-extension-layer.zip" | head -20 || true
 echo ""
 echo "Build completed successfully!"
