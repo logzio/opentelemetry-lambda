@@ -48,7 +48,6 @@ get_layer_download_url() {
 download_instrumentation_layer() {
     local language="$1"
     local output_dir="$2"
-    local architecture="${3:-amd64}"
     
     # Check if language has instrumentation layer
     local layer_prefix
@@ -134,7 +133,8 @@ list_available_layers() {
     echo "Available instrumentation layers:"
     for language in nodejs python javaagent javawrapper dotnet; do
         if layer_prefix=$(get_layer_prefix_for_language "$language"); then
-            local latest_tag=$(get_latest_layer_release "$layer_prefix")
+            local latest_tag
+            latest_tag=$(get_latest_layer_release "$layer_prefix")
             if [[ -n "$latest_tag" ]]; then
                 echo "  $language: $latest_tag"
             else
