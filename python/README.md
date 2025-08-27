@@ -38,7 +38,6 @@ Required:
 Optional:
 - `OTEL_SERVICE_NAME` – explicit service name
 - `OTEL_RESOURCE_ATTRIBUTES` – comma-separated resource attributes (for example, `service.name=my-func,env_id=${LOGZIO_ENV_ID},deployment.environment=${ENVIRONMENT}`)
-- `OTEL_EXPORTER_OTLP_PROTOCOL` – protocol to send to the local collector (`grpc` or `http/protobuf`); defaults work out of the box
 - `LOGZIO_ENV_ID` – environment identifier you can include in `OTEL_RESOURCE_ATTRIBUTES` (for example, `env_id=prod`)
 - `ENVIRONMENT` – logical environment name you can include in `OTEL_RESOURCE_ATTRIBUTES` (for example, `deployment.environment=prod`)
 

@@ -122,11 +122,6 @@ func (r *telemetryAPIReceiver) Start(ctx context.Context, host component.Host) e
 		return fmt.Errorf("failed to create telemetry api client: %w", err)
 	}
 
-	// Use the extension ID from the factory
-	if r.config.extensionID == "" {
-		return fmt.Errorf("extension ID not provided to telemetryapi receiver")
-	}
-
 	// Subscribe to telemetry API for the configured event types
 	if len(r.config.Types) > 0 {
 		eventTypes := make([]telemetryapi.EventType, len(r.config.Types))

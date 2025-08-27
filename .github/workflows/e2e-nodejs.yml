@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go (for Collector)
         uses: actions/setup-go@v5
@@ -60,7 +60,7 @@ jobs:
       e2e_label: ${{ steps.vars.outputs.e2e_label }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download layer artifact
         uses: actions/download-artifact@v4
@@ -175,7 +175,7 @@ jobs:
     needs: publish-update-invoke
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
         uses: actions/setup-go@v5

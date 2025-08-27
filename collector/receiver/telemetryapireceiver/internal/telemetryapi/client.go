@@ -15,6 +15,7 @@ import (
 const (
 	awsLambdaRuntimeAPIEnvVar       = "AWS_LAMBDA_RUNTIME_API"
 	lambdaExtensionIdentifierHeader = "Lambda-Extension-Identifier"
+	lambdaExtensionNameHeader       = "Lambda-Extension-Name"
 )
 
 // Client is a client for the AWS Lambda Telemetry API.
@@ -59,6 +60,7 @@ func (c *Client) Subscribe(ctx context.Context, extensionID string, types []Even
 		return err
 	}
 	req.Header.Set(lambdaExtensionIdentifierHeader, extensionID)
+	req.Header.Set(lambdaExtensionNameHeader, extensionID)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

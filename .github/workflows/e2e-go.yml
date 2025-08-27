@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go (for Collector)
         uses: actions/setup-go@v5
@@ -55,7 +55,7 @@ jobs:
       e2e_label: ${{ steps.vars.outputs.e2e_label }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download layer artifact
         uses: actions/download-artifact@v4
@@ -100,9 +100,9 @@ jobs:
           echo "Current environment variables:"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'Environment.Variables' --output json || echo "No environment variables set"
 
-      - name: Update Lambda configuration
+      - name: Update Lambda configuration with current run's layer and env vars
         run: |
-          echo "Updating function configuration..."
+          echo "Updating function configuration with this run's published layer and environment variables..."
           aws lambda update-function-configuration \
             --function-name "${FUNCTION_NAME}" \
             --layers "${{ steps.publish.outputs.layer_arn }}" \
@@ -111,7 +111,7 @@ jobs:
           echo "Waiting for function update to complete..."
           aws lambda wait function-updated --function-name "${FUNCTION_NAME}"
           
-          echo "Updated configuration:"
+          echo "Updated configuration (layers and environment variables):"
           aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Layers:Layers[].Arn,Environment:Environment.Variables}' --output json
 
       - name: Invoke function multiple times
@@ -170,7 +170,7 @@ jobs:
     needs: publish-update-invoke
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
         uses: actions/setup-go@v5

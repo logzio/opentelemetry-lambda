@@ -127,15 +127,21 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			desc:        "valid config",
-			cfg:         &Config{},
+			cfg:         &Config{extensionID: "extensionID"},
 			expectedErr: nil,
 		},
 		{
 			desc: "invalid config",
 			cfg: &Config{
-				Types: []string{"invalid"},
+				extensionID: "extensionID",
+				Types:       []string{"invalid"},
 			},
 			expectedErr: fmt.Errorf("unknown extension type: invalid"),
+		},
+		{
+			desc:        "missing extensionID",
+			cfg:         &Config{},
+			expectedErr: fmt.Errorf("extensionID is a required configuration field"),
 		},
 	}
 

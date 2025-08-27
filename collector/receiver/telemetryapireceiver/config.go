@@ -30,6 +30,9 @@ type Config struct {
 
 // Validate validates the configuration by checking for missing or invalid fields
 func (cfg *Config) Validate() error {
+	if cfg.extensionID == "" {
+		return fmt.Errorf("extensionID is a required configuration field")
+	}
 	for _, t := range cfg.Types {
 		if t != platform && t != function && t != extension {
 			return fmt.Errorf("unknown extension type: %s", t)
