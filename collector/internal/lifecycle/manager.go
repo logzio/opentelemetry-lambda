@@ -30,6 +30,7 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-lambda/collector/internal/collector"
 	"github.com/open-telemetry/opentelemetry-lambda/collector/internal/extensionapi"
+	"github.com/open-telemetry/opentelemetry-lambda/collector/internal/telemetryapi"
 	"github.com/open-telemetry/opentelemetry-lambda/collector/lambdacomponents"
 )
 
@@ -46,6 +47,7 @@ type manager struct {
 	logger             *zap.Logger
 	collector          collectorWrapper
 	extensionClient    *extensionapi.Client
+	listener           *telemetryapi.Listener
 	wg                 sync.WaitGroup
 	lifecycleListeners []lambdalifecycle.Listener
 }
@@ -67,9 +69,22 @@ func NewManager(ctx context.Context, logger *zap.Logger, version string) (contex
 		logger.Fatal("Cannot register extension", zap.Error(err))
 	}
 
+	listener := telemetryapi.NewListener(logger)
+	addr, err := listener.Start()
+	if err != nil {
+		logger.Fatal("Cannot start Telemetry API Listener", zap.Error(err))
+	}
+
+	telemetryClient := telemetryapi.NewClient(logger)
+	_, err = telemetryClient.Subscribe(ctx, []telemetryapi.EventType{telemetryapi.Platform}, res.ExtensionID, addr)
+	if err != nil {
+		logger.Fatal("Cannot register Telemetry API client", zap.Error(err))
+	}
+
 	lm := &manager{
 		logger:          logger.Named("lifecycle.manager"),
 		extensionClient: extensionClient,
+		listener:        listener,
 	}
 
 	factories, _ := lambdacomponents.Components(res.ExtensionID)
@@ -120,6 +135,7 @@ func (lm *manager) processEvents(ctx context.Context) error {
 			if res.EventType == extensionapi.Shutdown {
 				lm.logger.Info("Received SHUTDOWN event")
 				lm.notifyEnvironmentShutdown()
+				lm.listener.Shutdown()
 				err = lm.collector.Stop()
 				if err != nil {
 					if _, exitErr := lm.extensionClient.ExitError(ctx, fmt.Sprintf("error stopping collector: %v", err)); exitErr != nil {
@@ -130,6 +146,11 @@ func (lm *manager) processEvents(ctx context.Context) error {
 			}
 
 			lm.notifyFunctionInvoked()
+
+			err = lm.listener.Wait(ctx, res.RequestID)
+			if err != nil {
+				lm.logger.Error("problem waiting for platform.runtimeDone event", zap.Error(err), zap.String("requestID", res.RequestID))
+			}
 
 			// Check other components are ready before allowing the freezing of the environment.
 			lm.notifyFunctionFinished()

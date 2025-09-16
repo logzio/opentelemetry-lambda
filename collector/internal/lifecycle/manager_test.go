@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	"github.com/open-telemetry/opentelemetry-lambda/collector/internal/extensionapi"
+	"github.com/open-telemetry/opentelemetry-lambda/collector/internal/telemetryapi"
 )
 
 type MockCollector struct {
@@ -66,6 +67,7 @@ func TestRun(t *testing.T) {
 	lm = manager{
 		collector:       &MockCollector{},
 		logger:          logger,
+		listener:        telemetryapi.NewListener(logger),
 		extensionClient: extensionapi.NewClient(logger, u.Host),
 	}
 	require.NoError(t, lm.Run(ctx))
@@ -73,6 +75,7 @@ func TestRun(t *testing.T) {
 	lm = manager{
 		collector:       &MockCollector{},
 		logger:          logger,
+		listener:        telemetryapi.NewListener(logger),
 		extensionClient: extensionapi.NewClient(logger, u.Host),
 	}
 	lm.wg.Add(1)
@@ -138,6 +141,7 @@ func TestProcessEvents(t *testing.T) {
 			lm := manager{
 				collector:       &MockCollector{err: tc.collectorError},
 				logger:          logger,
+				listener:        telemetryapi.NewListener(logger),
 				extensionClient: extensionapi.NewClient(logger, u.Host),
 			}
 			lm.wg.Add(1)
