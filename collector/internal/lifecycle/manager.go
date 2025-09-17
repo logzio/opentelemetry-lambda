@@ -17,13 +17,12 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"github.com/open-telemetry/opentelemetry-lambda/collector/lambdalifecycle"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sync"
 	"syscall"
-
-	"github.com/open-telemetry/opentelemetry-lambda/collector/lambdalifecycle"
 
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
