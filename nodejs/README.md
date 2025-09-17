@@ -3,41 +3,7 @@
 Layer for running NodeJS applications on AWS Lambda with OpenTelemetry. Adding the layer and pointing to it with
 the `AWS_LAMBDA_EXEC_WRAPPER` environment variable will initialize OpenTelemetry, enabling tracing with no code change.
 
-## Combined OpenTelemetry Lambda Layer
-
-**New**: We now offer a simplified deployment option with a combined layer that bundles both the OpenTelemetry Node.js instrumentation and the collector into a single layer. This reduces the number of layers you need to manage and simplifies your Lambda function configuration.
-
-### What's included in the combined layer:
-- **Node.js OpenTelemetry instrumentation** - Automatically instruments your Lambda function
-- **OpenTelemetry Collector** - Built-in collector that exports telemetry data to your configured backend
-- **Auto-instrumentation for popular libraries** - Includes AWS SDK v3 and a subset of popular Node.js libraries
-- **ESM and CommonJS support** - Works with both module systems
-
-### Benefits:
-- **Single layer deployment** - No need to manage separate collector and instrumentation layers
-- **Simplified configuration** - Fewer environment variables and layer configurations
-- **Reduced cold start impact** - Optimized packaging reduces overhead
-- **Production-ready** - Includes all necessary components for complete observability
-
-### Usage:
-To use the combined layer, add it to your Lambda function and set `AWS_LAMBDA_EXEC_WRAPPER` to `/opt/otel-handler`.
-
-For detailed build instructions, see the build script at `nodejs/packages/layer/build-combined.sh` in this repository.
-
-### Environment variables
-
-Required:
-- `AWS_LAMBDA_EXEC_WRAPPER` – set to `/opt/otel-handler`
-- `LOGZIO_TRACES_TOKEN` – account token for traces
-- `LOGZIO_METRICS_TOKEN` – account token for metrics
-- `LOGZIO_LOGS_TOKEN` – account token for logs
-- `LOGZIO_REGION` – Logz.io region code (for example, `us`, `eu`)
-
-Optional:
-- `OTEL_SERVICE_NAME` – explicit service name
-- `OTEL_RESOURCE_ATTRIBUTES` – comma-separated resource attributes (for example, `service.name=my-func,env_id=${LOGZIO_ENV_ID},deployment.environment=${ENVIRONMENT}`)
-- `LOGZIO_ENV_ID` – environment identifier you can include in `OTEL_RESOURCE_ATTRIBUTES` (for example, `env_id=prod`)
-- `ENVIRONMENT` – logical environment name you can include in `OTEL_RESOURCE_ATTRIBUTES` (for example, `deployment.environment=prod`)
+To use, add the layer to your function configuration and then set `AWS_LAMBDA_EXEC_WRAPPER` to `/opt/otel-handler`.
 
 ## Configuring auto instrumentation
 

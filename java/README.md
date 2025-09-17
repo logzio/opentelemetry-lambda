@@ -59,46 +59,6 @@ For any other library, such as OkHttp, you will need to include the correspondin
 from the [instrumentation project](https://github.com/open-telemetry/opentelemetry-java-instrumentation) and
 modify your code to initialize it in your function.
 
-### Combined layer
-
-**New**: We now offer a simplified deployment option with a combined layer that bundles both the OpenTelemetry Java instrumentation (agent or wrapper) and the collector into a single layer. This reduces the number of layers you need to manage and simplifies your Lambda function configuration.
-
-#### What's included in the combined layer:
-- **Java OpenTelemetry Agent or Wrapper** - Both agent and wrapper variants are available
-- **OpenTelemetry Collector** - Built-in collector that exports telemetry data to your configured backend
-- **Auto-instrumentation** - Automatic instrumentation for supported Java libraries
-- **AWS SDK instrumentation** - Pre-configured instrumentation for AWS SDK calls
-
-#### Benefits:
-- **Single layer deployment** - No need to manage separate collector and instrumentation layers
-- **Simplified configuration** - Fewer environment variables and layer configurations
-- **Reduced complexity** - Everything needed for observability in one package
-- **Production-ready** - Includes all necessary components for complete observability
-
-#### Usage:
-To use the combined layer, add it to your Lambda function and set the appropriate `AWS_LAMBDA_EXEC_WRAPPER`:
-- `/opt/otel-handler` - for regular handlers (implementing RequestHandler)
-- `/opt/otel-sqs-handler` - for SQS-triggered functions
-- `/opt/otel-proxy-handler` - for API Gateway proxied handlers
-- `/opt/otel-stream-handler` - for streaming handlers
-
-For detailed build instructions, see the build script at `java/build-combined.sh` in this repository.
-
-### Environment variables
-
-Required:
-- `AWS_LAMBDA_EXEC_WRAPPER` – set to one of the provided handlers (for example, `/opt/otel-handler`)
-- `LOGZIO_TRACES_TOKEN` – account token for traces
-- `LOGZIO_METRICS_TOKEN` – account token for metrics
-- `LOGZIO_LOGS_TOKEN` – account token for logs
-- `LOGZIO_REGION` – Logz.io region code (for example, `us`, `eu`)
-
-Optional:
-- `OTEL_SERVICE_NAME` – explicit service name
-- `OTEL_RESOURCE_ATTRIBUTES` – comma-separated resource attributes (for example, `service.name=my-func,env_id=${LOGZIO_ENV_ID},deployment.environment=${ENVIRONMENT}`)
-- `LOGZIO_ENV_ID` – environment identifier you can include in `OTEL_RESOURCE_ATTRIBUTES` (for example, `env_id=prod`)
-- `ENVIRONMENT` – logical environment name you can include in `OTEL_RESOURCE_ATTRIBUTES` (for example, `deployment.environment=prod`)
-
 ## Configuring Context Propagators
 
 ### If you emit your traces to AWS X-Ray (instead of a third-party service) and have enabled X-Ray Active Tracing
