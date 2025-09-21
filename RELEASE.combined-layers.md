@@ -1,10 +1,10 @@
 # OpenTelemetry Lambda
 
-![GitHub Java Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-java.yml?branch%3Amain&label=CI%20%28Java%29&style=for-the-badge)
-![GitHub Collector Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-collector.yml?branch%3Amain&label=CI%20%28Collector%29&style=for-the-badge)
-![GitHub NodeJS Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-nodejs.yml?branch%3Amain&label=CI%20%28NodeJS%29&style=for-the-badge)
-![GitHub Terraform Lint Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-terraform.yml?branch%3Amain&label=CI%20%28Terraform%20Lint%29&style=for-the-badge)
-![GitHub Python Pull Request Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-python.yml?branch%3Amain&label=Pull%20Request%20%28Python%29&style=for-the-badge)
+![GitHub Java Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-java.yml?branch=main&label=CI%20%28Java%29&style=for-the-badge)
+![GitHub Collector Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-collector.yml?branch=main&label=CI%20%28Collector%29&style=for-the-badge)
+![GitHub NodeJS Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-nodejs.yml?branch=main&label=CI%20%28NodeJS%29&style=for-the-badge)
+![GitHub Terraform Lint Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-terraform.yml?branch=main&label=CI%20%28Terraform%20Lint%29&style=for-the-badge)
+![GitHub Python Pull Request Workflow Status](https://img.shields.io/github/actions/workflow/status/open-telemetry/opentelemetry-lambda/ci-python.yml?branch=main&label=Pull%20Request%20%28Python%29&style=for-the-badge)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/open-telemetry/opentelemetry-lambda/badge?style=for-the-badge)](https://scorecard.dev/viewer/?uri=github.com/open-telemetry/opentelemetry-lambda)
 
 ## OpenTelemetry Lambda Layers
@@ -128,13 +128,13 @@ See the [Contributing Guide](CONTRIBUTING.md) for details.
 
 - [Serkan Özal](https://github.com/serkan-ozal), Catchpoint
 - [Tyler Benson](https://github.com/tylerbenson), ServiceNow
+- [Warre Pessers](https://github.com/wpessers)
 
 For more information about the maintainer role, see the [community repository](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md#maintainer).
 
 ### Approvers
 
 - [Ivan Santos](https://github.com/pragmaticivan)
-- [Warre Pessers](https://github.com/wpessers)
 
 For more information about the approver role, see the [community repository](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md#approver).
 
@@ -152,128 +152,4 @@ For more information about the emeritus role, see the [community repository](htt
 - [Nathaniel Ruiz Nowell](https://github.com/NathanielRN)
 - [Tristan Sloughter](https://github.com/tsloughter)
 
-- Maintainers ([@open-telemetry/lambda-extension-maintainers](https://github.com/orgs/open-telemetry/teams/lambda-extension-maintainers)):
-
-  - [Raphael Philipe Mendes da Silva](https://github.com/rapphil), AWS
-  - [Serkan Özal](https://github.com/serkan-ozal), Catchpoint
-  - [Tyler Benson](https://github.com/tylerbenson), Lightstep
-
-- Emeritus Maintainers:
-
-  - [Alex Boten](https://github.com/codeboten)
-  - [Anthony Mirabella](https://github.com/Aneurysm9)
-
-Learn more about roles in the [community repository](https://github.com/open-telemetry/community/blob/main/community-membership.md).
-
-# Configuration Example
-
-Replace `<<LOGZIO_TRACING_SHIPPING_TOKEN>>`, `<<LOGZIO_SPM_SHIPPING_TOKEN>>`, `<<LOGZIO_ACCOUNT_REGION_CODE>>`, and `<<LOGZIO_LISTENER_HOST>>` with your Logz.io account's information.
-
-```yaml
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: "0.0.0.0:4317"
-      http:
-        endpoint: "0.0.0.0:4318"
-
-connectors:
-  spanmetrics:
-    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
-    dimensions:
-      - name: rpc.grpc.status_code
-      - name: http.method
-      - name: http.status_code
-      - name: cloud.provider
-      - name: cloud.region
-      - name: db.system
-      - name: messaging.system
-      - default: DEV
-        name: env_id
-    dimensions_cache_size: 100000
-    histogram:
-      explicit:
-        buckets:
-          - 2ms
-          - 8ms
-          - 50ms
-          - 100ms
-          - 200ms
-          - 500ms
-          - 1s
-          - 5s
-          - 10s
-    metrics_expiration: 5m
-    resource_metrics_key_attributes:
-      - service.name
-      - telemetry.sdk.language
-      - telemetry.sdk.name
-
-exporters:
-  logzio/traces:
-    account_token: <<LOGZIO_TRACING_SHIPPING_TOKEN>>
-    region: <<LOGZIO_ACCOUNT_REGION_CODE>>
-  prometheusremotewrite/spm:
-    endpoint: https://<<LOGZIO_LISTENER_HOST>>:8053
-    add_metric_suffixes: false
-    headers:
-      Authorization: Bearer <<LOGZIO_SPM_SHIPPING_TOKEN>>
-
-processors:
-  batch:
-  tail_sampling:
-    policies:
-      - name: policy-errors
-        type: status_code
-        status_code: {status_codes: [ERROR]}
-      - name: policy-slow
-        type: latency
-        latency: {threshold_ms: 1000}
-      - name: policy-random-ok
-        type: probabilistic
-        probabilistic: {sampling_percentage: 10}
-  metricstransform/metrics-rename:
-    transforms:
-    - include: ^duration(.*)$$
-      action: update
-      match_type: regexp
-      new_name: latency.$${1} 
-    - action: update
-      include: calls
-      new_name: calls_total
-  metricstransform/labels-rename:
-    transforms:
-    - action: update
-      include: ^latency
-      match_type: regexp
-      operations:
-      - action: update_label
-        label: span.name
-        new_label: operation
-    - action: update
-      include: ^calls
-      match_type: regexp
-      operations:
-      - action: update_label
-        label: span.name
-        new_label: operation  
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [tail_sampling, batch]
-      exporters: [logzio/traces]
-    traces/spm:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [spanmetrics]
-    metrics/spanmetrics:
-      receivers: [spanmetrics]
-      processors: [metricstransform/metrics-rename, metricstransform/labels-rename, batch]
-      exporters: [prometheusremotewrite/spm]
-  telemetry: 
-    logs:
-      level: "info"
-```
+For more information about the emeritus role, see the [community repository](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md#emeritus-maintainerapprovertriager).
