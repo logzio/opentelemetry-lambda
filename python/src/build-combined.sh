@@ -55,6 +55,10 @@ mkdir -p "$WORKSPACE_DIR/extensions"
 mkdir -p "$WORKSPACE_DIR/collector-config"
 cp "$COLLECTOR_DIR/build/extensions"/* "$WORKSPACE_DIR/extensions/"
 cp "$COLLECTOR_DIR/config.yaml" "$WORKSPACE_DIR/collector-config/"
+# Prefer the combined production config as the default if present
+if [ -f "$COLLECTOR_DIR/config.combined.yaml" ]; then
+    cp "$COLLECTOR_DIR/config.combined.yaml" "$WORKSPACE_DIR/collector-config/config.yaml"
+fi
 # Include E2E-specific collector config for testing workflows
 if [ -f "$COLLECTOR_DIR/config.e2e.yaml" ]; then
     cp "$COLLECTOR_DIR/config.e2e.yaml" "$WORKSPACE_DIR/collector-config/"

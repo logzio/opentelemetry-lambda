@@ -55,6 +55,9 @@ mkdir -p "$BUILD_DIR/combined-layer/extensions"
 mkdir -p "$BUILD_DIR/combined-layer/collector-config"
 cp "$COLLECTOR_DIR/build/extensions"/* "$BUILD_DIR/combined-layer/extensions/"
 cp "$COLLECTOR_DIR/config.yaml" "$BUILD_DIR/combined-layer/collector-config/"
+if [ -f "$COLLECTOR_DIR/config.combined.yaml" ]; then
+  cp "$COLLECTOR_DIR/config.combined.yaml" "$BUILD_DIR/combined-layer/collector-config/config.yaml"
+fi
 if [ -f "$COLLECTOR_DIR/config.e2e.yaml" ]; then
   cp "$COLLECTOR_DIR/config.e2e.yaml" "$BUILD_DIR/combined-layer/collector-config/"
 fi
