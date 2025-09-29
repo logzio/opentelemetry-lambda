@@ -1,6 +1,8 @@
-require 'opentelemetry-sdk'
-require 'opentelemetry-exporter-otlp'
-require 'opentelemetry-instrumentation-all'
+# Ensure gem libs are on the load path in case environment hooks are ignored
+require 'bundler/setup'
+require 'opentelemetry/sdk'
+require 'opentelemetry/exporter/otlp'
+require 'opentelemetry/instrumentation/all'
 
 # We need to load the function code's dependencies, and _before_ any dependencies might
 # be initialized outside of the function handler, bootstrap instrumentation.
@@ -14,7 +16,11 @@ def preload_function_dependencies
     return nil
   end
 
-  libraries = File.read("#{default_task_location}/#{handler_file}.rb")
+  # Read as UTF-8 and scrub invalid bytes to avoid US-ASCII encoding errors
+  source = File.read("#{default_task_location}/#{handler_file}.rb", mode: 'rb').force_encoding('UTF-8')
+  source = source.sub(/^\uFEFF/, '') # strip UTF-8 BOM if present
+  source = source.scrub
+  libraries = source
                   .scan(/^\s*require\s+['"]([^'"]+)['"]/)
                   .flatten
 

@@ -1,0 +1,222 @@
+name: E2E - Node.js Layer
+
+on:
+  workflow_dispatch:
+    inputs:
+      logzio_api_url:
+        description: "Logz.io API base URL (default https://api.logz.io)"
+        required: false
+        default: "https://api.logz.io"
+      aws_region:
+        description: "AWS Region"
+        required: false
+        default: "us-east-1"
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ inputs.aws_region || 'us-east-1' }}
+  AWS_DEFAULT_REGION: ${{ inputs.aws_region || 'us-east-1' }}
+  ARCHITECTURE: amd64
+  FUNCTION_NAME: one-layer-e2e-test-nodejs
+  LAYER_BASE_NAME: otel-nodejs-extension-e2e
+  SERVICE_NAME: logzio-e2e-nodejs-service
+  LOGZIO_REGION: us
+
+jobs:
+  build-layer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go (for Collector)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: collector/go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build combined Node.js layer (amd64)
+        run: |
+          cd nodejs/packages/layer
+          ARCHITECTURE=${ARCHITECTURE} ./build-combined.sh
+
+      - name: Upload layer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: otel-nodejs-extension-layer.zip
+          path: nodejs/packages/layer/build/otel-nodejs-extension-layer.zip
+
+  publish-update-invoke:
+    runs-on: ubuntu-latest
+    needs: build-layer
+    outputs:
+      layer_arn: ${{ steps.publish.outputs.layer_arn }}
+      e2e_label: ${{ steps.vars.outputs.e2e_label }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download layer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: otel-nodejs-extension-layer.zip
+
+      - name: Configure AWS (User Credentials)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish layer version
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          LAYER_NAME="${LAYER_BASE_NAME}-amd64"
+          ARN=$(aws lambda publish-layer-version \
+            --layer-name "$LAYER_NAME" \
+            --license-info "Apache-2.0" \
+            --compatible-architectures x86_64 \
+            --compatible-runtimes nodejs18.x nodejs20.x nodejs22.x \
+            --zip-file fileb://otel-nodejs-extension-layer.zip \
+            --query 'LayerVersionArn' --output text)
+          echo "layer_arn=$ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare variables
+        id: vars
+        run: |
+          echo "e2e_label=nodejs-e2e-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Check function exists and get current config
+        run: |
+          echo "Checking if function exists and its current configuration..."
+          aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Role:Role,KMSKeyArn:KMSKeyArn,State:State,LastUpdateStatus:LastUpdateStatus}' --output table || {
+            echo "❌ Function ${FUNCTION_NAME} does not exist or is not accessible."
+            exit 1
+          }
+
+          echo "Current environment variables:"
+          aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query 'Environment.Variables' --output json || echo "No environment variables set"
+
+      - name: Update Lambda configuration
+        run: |
+          echo "Updating function configuration..."
+          aws lambda update-function-configuration \
+            --function-name "${FUNCTION_NAME}" \
+            --layers "${{ steps.publish.outputs.layer_arn }}" \
+            --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.e2e.yaml,OTEL_NODE_ENABLED_INSTRUMENTATIONS='http,undici',OTEL_SERVICE_NAME=${SERVICE_NAME},OTEL_TRACES_SAMPLER=always_on,OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,OTEL_RESOURCE_ATTRIBUTES=deployment.environment=${{ steps.vars.outputs.e2e_label }},ENVIRONMENT=${{ steps.vars.outputs.e2e_label }},LOGZIO_REGION=${LOGZIO_REGION},LOGZIO_LOGS_TOKEN=${{ secrets.LOGZIO_LOGS_TOKEN }},LOGZIO_TRACES_TOKEN=${{ secrets.LOGZIO_TRACES_TOKEN }},LOGZIO_METRICS_TOKEN=${{ secrets.LOGZIO_METRICS_TOKEN }}}"
+
+          echo "Waiting for function update to complete..."
+          aws lambda wait function-updated --function-name "${FUNCTION_NAME}"
+
+          echo "Updated configuration:"
+          aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Layers:Layers[].Arn,Environment:Environment.Variables}' --output json
+
+      - name: Invoke function multiple times
+        run: |
+          echo "Invoking function first time..."
+          aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response1.json
+          echo "First invocation response:"
+          cat response1.json
+          echo ""
+
+          echo "Invoking function second time..."
+          aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response2.json
+          echo "Second invocation response:"
+          cat response2.json
+          echo ""
+
+          echo "Sleeping for 5 seconds before additional invocations..."
+          sleep 5
+
+          echo "Invoking function third time..."
+          aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response3.json
+          echo "Third invocation response:"
+          cat response3.json
+          echo ""
+
+          echo "Invoking function fourth time..."
+          aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response4.json
+          echo "Fourth invocation response:"
+          cat response4.json
+          echo ""
+
+          echo "Invoking function fifth time..."
+          aws lambda invoke --function-name "${FUNCTION_NAME}" --payload '{}' --cli-binary-format raw-in-base64-out response5.json
+          echo "Fifth invocation response:"
+          cat response5.json
+          echo ""
+
+      - name: Check CloudWatch logs
+        run: |
+          echo "Checking recent CloudWatch logs for the function..."
+          LOG_GROUP_NAME="/aws/lambda/${FUNCTION_NAME}"
+
+          # Get recent log events (last 5 minutes)
+          aws logs filter-log-events \
+            --log-group-name "$LOG_GROUP_NAME" \
+            --start-time $(date -d '5 minutes ago' +%s)000 \
+            --query 'events[].message' \
+            --output text || {
+            echo "❌ Could not fetch CloudWatch logs. Log group might not exist or no recent logs."
+            echo "Checking if log group exists..."
+            aws logs describe-log-groups --log-group-name-prefix "$LOG_GROUP_NAME" --query 'logGroups[].logGroupName' --output text
+          }
+
+  verify-e2e:
+    runs-on: ubuntu-latest
+    needs: publish-update-invoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run E2E verification tests
+        working-directory: e2e_tests
+        env:
+          LOGZIO_API_KEY: ${{ secrets.LOGZIO_API_KEY }}
+          LOGZIO_API_URL: ${{ inputs.logzio_api_url || 'https://api.logz.io' }}
+          LOGZIO_API_METRICS_KEY: ${{ secrets.LOGZIO_API_METRICS_KEY }}
+          LOGZIO_METRICS_QUERY_URL: ${{ inputs.logzio_api_url || 'https://api.logz.io' }}
+          LOGZIO_API_TRACES_KEY: ${{ secrets.LOGZIO_API_TRACES_KEY }}
+          E2E_TEST_ENVIRONMENT_LABEL: ${{ needs.publish-update-invoke.outputs.e2e_label }}
+          EXPECTED_LAMBDA_FUNCTION_NAME: one-layer-e2e-test-nodejs
+          EXPECTED_SERVICE_NAME: ${{ env.SERVICE_NAME }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          go mod tidy
+          go test ./... -v -tags=e2e -run TestE2ERunner
+
+  cleanup:
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [publish-update-invoke, verify-e2e]
+    steps:
+      - name: Configure AWS (User Credentials)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws_region || 'us-east-1' }}
+      - name: Delete published layer version
+        if: ${{ needs.publish-update-invoke.outputs.layer_arn != '' }}
+        shell: bash
+        run: |
+          ARN="${{ needs.publish-update-invoke.outputs.layer_arn }}"
+          LAYER_NAME=$(echo "$ARN" | cut -d: -f7)
+          LAYER_VERSION=$(echo "$ARN" | cut -d: -f8)
+          aws lambda delete-layer-version --layer-name "$LAYER_NAME" --version-number "$LAYER_VERSION" || echo "Failed to delete layer version."
+
+

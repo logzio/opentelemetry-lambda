@@ -14,8 +14,8 @@ import (
 
 const (
 	awsLambdaRuntimeAPIEnvVar       = "AWS_LAMBDA_RUNTIME_API"
-	lambdaExtensionNameHeader       = "Lambda-Extension-Name"
 	lambdaExtensionIdentifierHeader = "Lambda-Extension-Identifier"
+	lambdaExtensionNameHeader       = "Lambda-Extension-Name"
 )
 
 // Client is a client for the AWS Lambda Telemetry API.
@@ -41,36 +41,6 @@ func NewClient(logger *zap.Logger) (*Client, error) {
 	}, nil
 }
 
-// Register registers the extension with the Lambda Extensions API.
-func (c *Client) Register(ctx context.Context, extensionName string) (string, error) {
-	url := c.baseURL + "/extension/register"
-	reqBody, _ := json.Marshal(RegisterRequest{Events: []string{"INVOKE", "SHUTDOWN"}})
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set(lambdaExtensionNameHeader, extensionName)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("failed to register extension, status: %s, body: %s", resp.Status, string(body))
-	}
-
-	extensionID := resp.Header.Get(lambdaExtensionNameHeader)
-	if extensionID == "" {
-		return "", fmt.Errorf("did not receive extension identifier")
-	}
-
-	return extensionID, nil
-}
-
 // Subscribe subscribes the extension to the Telemetry API.
 func (c *Client) Subscribe(ctx context.Context, extensionID string, types []EventType, buffering BufferingCfg, destination Destination) error {
 	url := c.telemetryAPIURL
@@ -89,6 +59,7 @@ func (c *Client) Subscribe(ctx context.Context, extensionID string, types []Even
 	if err != nil {
 		return err
 	}
+	req.Header.Set(lambdaExtensionIdentifierHeader, extensionID)
 	req.Header.Set(lambdaExtensionNameHeader, extensionID)
 
 	resp, err := c.httpClient.Do(req)
