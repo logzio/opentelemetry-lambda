@@ -2,6 +2,8 @@
 // Loaded with NODE_OPTIONS=--require /opt/nodejs/logzio-otel-hooks.cjs, before the OpenTelemetry layer starts.
 //
 // 1. Names API Gateway spans by route and adds HTTP attributes APM reads.
+// 3. Cold starts: the first invocation of a new Lambda instance gets a `cold start` child span covering
+//    the time from process start to the handler call, and `faas.init_duration_ms` on the invocation span.
 // 2. Carries trace context across services AWS does not propagate for us:
 //    - sending side: adds a `_logzio_trace` field to JSON payloads sent with
 //      EventBridge PutEvents, Kinesis PutRecord(s) and IoT Publish. Non-JSON payloads are left untouched.
@@ -9,6 +11,7 @@
 //    - receiving side: the invocation continues the first record's trace, and links to every
 //      record's trace in a batch (Kinesis, SQS, EventBridge).
 const { propagation, context, trace, ROOT_CONTEXT } = require('@opentelemetry/api');
+const { performance } = require('perf_hooks');
 
 const FIELD = '_logzio_trace';
 const ENABLED = (process.env.LOGZIO_PROPAGATION || 'on') !== 'off';
@@ -35,8 +38,28 @@ function eventContextExtractor(event) {
   return ROOT_CONTEXT;
 }
 
+// ---------- cold start ----------
+// Provisioned-concurrency instances are initialized ahead of traffic, so no request waits for their init.
+let firstInvocation = process.env.AWS_LAMBDA_INITIALIZATION_TYPE !== 'provisioned-concurrency';
+function recordColdStart(span) {
+  if (!firstInvocation) return;
+  firstInvocation = false;
+  const start = performance.timeOrigin;   // Node process start (epoch ms)
+  const end = Date.now();                 // handler is about to run
+  const ms = Math.round(end - start);
+  if (!(ms > 0 && ms < 15 * 60 * 1000)) return;
+  span.setAttributes({ 'faas.coldstart': true, 'faas.init_duration_ms': ms });
+  const init = trace.getTracer('logzio-lambda').startSpan(
+    'cold start',
+    { startTime: start, attributes: { 'faas.coldstart': true, 'faas.init_duration_ms': ms } },
+    trace.setSpan(context.active(), span),
+  );
+  init.end(end);
+}
+
 // ---------- span naming + batch links ----------
 function requestHook(span, { event }) {
+  try { recordColdStart(span); } catch { /* never break the invocation */ }
   const method = event?.httpMethod || event?.requestContext?.http?.method;
   const route = event?.resource || event?.routeKey?.split(' ')[1];
   if (method && route) {

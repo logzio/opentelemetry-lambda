@@ -1,6 +1,6 @@
 # Logz.io gateway mode: set OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.gateway.yaml
 # Sends traces and function logs to the Logz.io gateway collector, which adds APM metrics and forwards to Logz.io.
-# Cold starts: Lambda's Telemetry API reports init time; it is sent as a `platform.init` span.
+# Cold starts are recorded by the Logz.io hooks inside the first invocation's trace.
 receivers:
   otlp:
     protocols:
@@ -13,12 +13,6 @@ receivers:
 
 processors:
   batch:
-  # Keep only the init (cold start) span from the platform events; invocation spans come from the SDK.
-  filter/platform:
-    error_mode: ignore
-    traces:
-      span:
-        - 'IsMatch(name, "^platform\\.") and not IsMatch(name, "^platform\\.init")'
 
 exporters:
   otlphttp:
@@ -29,8 +23,8 @@ exporters:
 service:
   pipelines:
     traces:
-      receivers: [otlp, telemetryapi]
-      processors: [filter/platform, batch]
+      receivers: [otlp]
+      processors: [batch]
       exporters: [otlphttp]
     logs:
       receivers: [telemetryapi]
