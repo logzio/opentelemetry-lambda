@@ -1,0 +1,21 @@
+#!/bin/bash
+# Logz.io Lambda layer for Node.js: OpenTelemetry Node.js wrapper + collector extension + Logz.io hooks.
+set -ef -o pipefail
+
+# Logz.io hooks (route naming, async trace propagation), loaded before the OpenTelemetry SDK starts.
+export NODE_OPTIONS="--require /opt/nodejs/logzio-otel-hooks.cjs ${NODE_OPTIONS} --import /opt/init.mjs"
+
+if [[ $OTEL_RESOURCE_ATTRIBUTES != *"service.name="* ]]; then
+  if [[ -n "$OTEL_RESOURCE_ATTRIBUTES" ]]; then
+    export OTEL_RESOURCE_ATTRIBUTES="service.name=${OTEL_SERVICE_NAME:-$AWS_LAMBDA_FUNCTION_NAME},${OTEL_RESOURCE_ATTRIBUTES}"
+  else
+    export OTEL_RESOURCE_ATTRIBUTES="service.name=${OTEL_SERVICE_NAME:-$AWS_LAMBDA_FUNCTION_NAME}"
+  fi
+fi
+export OTEL_PROPAGATORS="${OTEL_PROPAGATORS:-tracecontext,baggage,xray}"
+# Logz.io defaults: trace fetch() and common clients; traces only (the collector forwards function logs separately).
+export OTEL_NODE_ENABLED_INSTRUMENTATIONS="${OTEL_NODE_ENABLED_INSTRUMENTATIONS:-http,undici,dns,net,pg,mysql,mysql2,redis,ioredis,mongodb,express,graphql}"
+export OTEL_METRICS_EXPORTER="${OTEL_METRICS_EXPORTER:-none}"
+export OTEL_LOGS_EXPORTER="${OTEL_LOGS_EXPORTER:-none}"
+
+exec "$@"

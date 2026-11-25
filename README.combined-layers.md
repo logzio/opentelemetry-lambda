@@ -49,6 +49,12 @@ Most combined layers support these common environment variables:
 - **Agent and wrapper variants:** Both Java agent and wrapper approaches are available in the combined layer
 
 #### Node.js Combined Layer
+- **Based on OpenTelemetry Node.js layer 0.24.0.** Produces AWS SDK spans (`DynamoDB.PutItem`, `SQS.SendMessage`, `EventBridge.PutEvents`, ...) with `rpc.*`, `db.system.name` and `messaging.*` attributes, including SDK v3 releases that moved to `@smithy/core`.
+- **Logz.io hooks** (`/opt/nodejs/logzio-otel-hooks.cjs`, loaded automatically by `/opt/otel-handler`):
+  - API Gateway spans are named by route (`GET /orders/{id}`) and get `http.route`, `http.request.method`, `faas.trigger` and the response status code (both current and legacy attribute names).
+  - Trace context crosses services AWS does not propagate: a `_logzio_trace` field is added to JSON payloads sent with EventBridge `PutEvents`, Kinesis `PutRecord`/`PutRecords` and IoT `Publish` (non-JSON payloads are left untouched). The receiving function continues that trace, and links every record of a Kinesis/SQS batch. Set `LOGZIO_PROPAGATION=off` to disable.
+- **Defaults set by the wrapper:** `OTEL_NODE_ENABLED_INSTRUMENTATIONS` includes `undici` (Node's built-in `fetch`); SDK metrics and logs exporters are off (function logs are shipped by the collector).
+- **Gateway mode (APM service pages):** set `OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.gateway.yaml`, `LOGZIO_GATEWAY_ENDPOINT` and `LOGZIO_GATEWAY_TOKEN`. Traces and logs go to a Logz.io gateway collector, which computes APM span metrics and forwards to Logz.io.
 - **ESM and CommonJS support:** Works with both module systems
 - **Instrumentation control:**
   - `OTEL_NODE_ENABLED_INSTRUMENTATIONS` - comma-separated list to enable only specific instrumentations
