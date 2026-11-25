@@ -10,48 +10,75 @@
 //      Set LOGZIO_PROPAGATION=off to disable.
 //    - receiving side: the invocation continues the first record's trace, and links to every
 //      record's trace in a batch (Kinesis, SQS, EventBridge).
-const { propagation, context, trace, ROOT_CONTEXT } = require('@opentelemetry/api');
+const {
+  propagation,
+  context,
+  trace,
+  ROOT_CONTEXT,
+} = require('@opentelemetry/api');
 const { performance } = require('perf_hooks');
 
 const FIELD = '_logzio_trace';
 const ENABLED = (process.env.LOGZIO_PROPAGATION || 'on') !== 'off';
 const getter = { keys: c => Object.keys(c || {}), get: (c, k) => c?.[k] };
-const fromCarrier = c => (c && c.traceparent ? propagation.extract(ROOT_CONTEXT, c, getter) : null);
+const fromCarrier = c =>
+  c && c.traceparent ? propagation.extract(ROOT_CONTEXT, c, getter) : null;
 
 // ---------- receiving side ----------
 function parseJson(text) {
-  try { const v = JSON.parse(text); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; }
+  try {
+    const v = JSON.parse(text);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
 }
 function recordCarrier(r) {
-  if (r?.messageAttributes?.traceparent) return { traceparent: r.messageAttributes.traceparent.stringValue };  // SQS (SDK-injected)
-  if (r?.kinesis?.data) return parseJson(Buffer.from(r.kinesis.data, 'base64').toString())?.[FIELD];              // Kinesis
-  if (typeof r?.body === 'string') { const b = parseJson(r.body); return b?.[FIELD] || b?.detail?.[FIELD]; }       // SQS JSON body / EventBridge→SQS
+  if (r?.messageAttributes?.traceparent)
+    return { traceparent: r.messageAttributes.traceparent.stringValue }; // SQS (SDK-injected)
+  if (r?.kinesis?.data)
+    return parseJson(Buffer.from(r.kinesis.data, 'base64').toString())?.[FIELD]; // Kinesis
+  if (typeof r?.body === 'string') {
+    const b = parseJson(r.body);
+    return b?.[FIELD] || b?.detail?.[FIELD];
+  } // SQS JSON body / EventBridge→SQS
   return null;
 }
 function eventContextExtractor(event) {
-  if (event?.headers) {                                                                                             // API Gateway / function URL
-    const h = Object.fromEntries(Object.entries(event.headers).map(([k, v]) => [k.toLowerCase(), v]));
+  if (event?.headers) {
+    // API Gateway / function URL
+    const h = Object.fromEntries(
+      Object.entries(event.headers).map(([k, v]) => [k.toLowerCase(), v]),
+    );
     return propagation.extract(ROOT_CONTEXT, h, getter);
   }
-  if (event?.detail?.[FIELD]) return fromCarrier(event.detail[FIELD]) || ROOT_CONTEXT;                              // EventBridge
-  for (const r of event?.Records || []) { const c = fromCarrier(recordCarrier(r)); if (c) return c; }               // first record with context
+  if (event?.detail?.[FIELD])
+    return fromCarrier(event.detail[FIELD]) || ROOT_CONTEXT; // EventBridge
+  for (const r of event?.Records || []) {
+    const c = fromCarrier(recordCarrier(r));
+    if (c) return c;
+  } // first record with context
   return ROOT_CONTEXT;
 }
 
 // ---------- cold start ----------
 // Provisioned-concurrency instances are initialized ahead of traffic, so no request waits for their init.
-let firstInvocation = process.env.AWS_LAMBDA_INITIALIZATION_TYPE !== 'provisioned-concurrency';
+let firstInvocation =
+  process.env.AWS_LAMBDA_INITIALIZATION_TYPE !== 'provisioned-concurrency';
 function recordColdStart(span) {
   if (!firstInvocation) return;
   firstInvocation = false;
-  const start = performance.timeOrigin;   // Node process start (epoch ms)
-  const end = Date.now();                 // handler is about to run
+  const start = performance.timeOrigin; // Node process start (epoch ms)
+  const end = Date.now(); // handler is about to run
   const ms = Math.round(end - start);
   if (!(ms > 0 && ms < 15 * 60 * 1000)) return;
   span.setAttributes({ 'faas.coldstart': true, 'faas.init_duration_ms': ms });
   const init = trace.getTracer('logzio-lambda').startSpan(
     'cold start',
-    { startTime: start, attributes: { 'faas.coldstart': true, 'faas.init_duration_ms': ms } },
+    {
+      startTime: start,
+      attributes: { 'faas.coldstart': true, 'faas.init_duration_ms': ms },
+    },
     trace.setSpan(context.active(), span),
   );
   init.end(end);
@@ -59,16 +86,29 @@ function recordColdStart(span) {
 
 // ---------- span naming + batch links ----------
 function requestHook(span, { event }) {
-  try { recordColdStart(span); } catch { /* never break the invocation */ }
+  try {
+    recordColdStart(span);
+  } catch {
+    /* never break the invocation */
+  }
   const method = event?.httpMethod || event?.requestContext?.http?.method;
   const route = event?.resource || event?.routeKey?.split(' ')[1];
   if (method && route) {
     span.updateName(`${method} ${route}`);
     // Both old and current names: APM's status panel reads the old ones until APPZ-3884 ships.
-    span.setAttributes({ 'http.request.method': method, 'http.method': method, 'http.route': route, 'faas.trigger': 'http' });
+    span.setAttributes({
+      'http.request.method': method,
+      'http.method': method,
+      'http.route': route,
+      'faas.trigger': 'http',
+    });
   }
   const records = event?.Records;
-  if (Array.isArray(records) && records.length > 1 && typeof span.addLinks === 'function') {
+  if (
+    Array.isArray(records) &&
+    records.length > 1 &&
+    typeof span.addLinks === 'function'
+  ) {
     const links = [];
     for (const r of records.slice(0, 128)) {
       const c = fromCarrier(recordCarrier(r));
@@ -80,7 +120,11 @@ function requestHook(span, { event }) {
   }
 }
 function responseHook(span, { res }) {
-  if (res && typeof res.statusCode === 'number') span.setAttributes({ 'http.response.status_code': res.statusCode, 'http.status_code': res.statusCode });
+  if (res && typeof res.statusCode === 'number')
+    span.setAttributes({
+      'http.response.status_code': res.statusCode,
+      'http.status_code': res.statusCode,
+    });
 }
 
 // ---------- sending side ----------
@@ -96,29 +140,53 @@ function addToJsonString(text, carrier) {
   return JSON.stringify(obj);
 }
 function addToBytes(data, carrier) {
-  const text = typeof data === 'string' ? data : Buffer.from(data).toString('utf8');
+  const text =
+    typeof data === 'string' ? data : Buffer.from(data).toString('utf8');
   const out = addToJsonString(text, carrier);
-  return out === null ? null : (typeof data === 'string' ? out : Buffer.from(out));
+  return out === null
+    ? null
+    : typeof data === 'string'
+      ? out
+      : Buffer.from(out);
 }
 function preRequestHook(span, info) {
   if (!ENABLED) return;
   try {
-    const request = info?.request || info;   // newer instrumentation passes { moduleVersion, request }
+    const request = info?.request || info; // newer instrumentation passes { moduleVersion, request }
     const input = request?.commandInput;
     const cmd = request?.commandName;
     const carrier = input && carrierFor(span);
     if (!carrier) return;
-    if (cmd === 'PutEvents' && Array.isArray(input.Entries)) {                                     // EventBridge
-      for (const e of input.Entries) { const d = typeof e.Detail === 'string' && addToJsonString(e.Detail, carrier); if (d) e.Detail = d; }
-    } else if (cmd === 'PutRecord' && input.Data) {                                                 // Kinesis / Firehose
-      const d = addToBytes(input.Data, carrier); if (d) input.Data = d;
+    if (cmd === 'PutEvents' && Array.isArray(input.Entries)) {
+      // EventBridge
+      for (const e of input.Entries) {
+        const d =
+          typeof e.Detail === 'string' && addToJsonString(e.Detail, carrier);
+        if (d) e.Detail = d;
+      }
+    } else if (cmd === 'PutRecord' && input.Data) {
+      // Kinesis / Firehose
+      const d = addToBytes(input.Data, carrier);
+      if (d) input.Data = d;
     } else if (cmd === 'PutRecords' && Array.isArray(input.Records)) {
-      for (const r of input.Records) { const d = r.Data && addToBytes(r.Data, carrier); if (d) r.Data = d; }
-    } else if (cmd === 'Publish' && input.payload && input.topic) {                                 // IoT Core
-      const d = addToBytes(input.payload, carrier); if (d) input.payload = d;
+      for (const r of input.Records) {
+        const d = r.Data && addToBytes(r.Data, carrier);
+        if (d) r.Data = d;
+      }
+    } else if (cmd === 'Publish' && input.payload && input.topic) {
+      // IoT Core
+      const d = addToBytes(input.payload, carrier);
+      if (d) input.payload = d;
     }
-  } catch { /* never break the customer's call */ }
+  } catch {
+    /* never break the customer's call */
+  }
 }
 
-globalThis.configureLambdaInstrumentation = cfg => ({ ...cfg, eventContextExtractor, requestHook, responseHook });
+globalThis.configureLambdaInstrumentation = cfg => ({
+  ...cfg,
+  eventContextExtractor,
+  requestHook,
+  responseHook,
+});
 globalThis.configureAwsInstrumentation = cfg => ({ ...cfg, preRequestHook });
