@@ -81,6 +81,7 @@ chmod +x "$WORKSPACE_DIR/otel-handler"
 # Gateway mode config (traces and logs to a Logz.io gateway collector that adds APM metrics).
 if [ -f "$COLLECTOR_DIR/config.gateway.yaml" ]; then
 	cp "$COLLECTOR_DIR/config.gateway.yaml" "$WORKSPACE_DIR/collector-config/config.gateway.yaml"
+	cp "$COLLECTOR_DIR/config.gateway-traces.yaml" "$WORKSPACE_DIR/collector-config/config.gateway-traces.yaml"
 fi
 
 echo "Step 4: Creating build metadata..."

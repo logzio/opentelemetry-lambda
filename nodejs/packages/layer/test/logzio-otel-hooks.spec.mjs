@@ -143,6 +143,23 @@ describe('Logz.io hooks', () => {
     });
   });
 
+  describe('limits', () => {
+    it('records the timeout from the remaining time at invocation start', () => {
+      const span = fakeSpan();
+      lambdaCfg.requestHook(span, {
+        event: {},
+        context: { getRemainingTimeInMillis: () => 2998 },
+      });
+      assert.strictEqual(span.attributes['faas.timeout_ms'], 3000);
+    });
+
+    it('records the peak memory used when the invocation ends', () => {
+      const span = fakeSpan();
+      lambdaCfg.responseHook(span, { res: 'ok' });
+      assert.ok(span.attributes['faas.memory_used_mb'] > 0);
+    });
+  });
+
   describe('eventContextExtractor', () => {
     it('continues the trace from API Gateway headers, case-insensitively', () => {
       const ctx = lambdaCfg.eventContextExtractor({

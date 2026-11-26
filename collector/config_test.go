@@ -37,7 +37,7 @@ func TestShippedConfigsAreValid(t *testing.T) {
 	factories, err := lambdacomponents.Components("collector")
 	require.NoError(t, err)
 
-	for _, file := range []string{"config.gateway.yaml"} {
+	for _, file := range []string{"config.gateway.yaml", "config.gateway-traces.yaml"} {
 		t.Run(file, func(t *testing.T) {
 			provider, err := otelcol.NewConfigProvider(otelcol.ConfigProviderSettings{
 				ResolverSettings: confmap.ResolverSettings{

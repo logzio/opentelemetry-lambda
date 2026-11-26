@@ -14,6 +14,9 @@
 //    messaging.destination.name (stream, queue or topic), so APM shows the trigger as a dependency.
 // 5. Logs: console output during an invocation is also sent as OpenTelemetry logs carrying the trace and
 //    span IDs, and flushed together with the spans when the invocation ends.
+// 6. Limits: the invocation span gets the function's timeout (`faas.timeout_ms`) and the peak memory the
+//    instance has used so far (`faas.memory_used_mb`). Configured memory is already on the resource
+//    (`faas.max_memory`). Aggregate them over spans (for example max by function) to compare with the limits.
 const {
   propagation,
   context,
@@ -161,11 +164,32 @@ const flushLogsWithSpans = {
   shutdown: () => loggerProvider?.shutdown() ?? Promise.resolve(),
 };
 
+// ---------- limits ----------
+// Remaining time at the very start of an invocation is the configured timeout (Lambda timeouts are whole seconds).
+function recordTimeout(span, event, lambdaContext) {
+  const remaining = lambdaContext?.getRemainingTimeInMillis?.();
+  if (typeof remaining === 'number' && remaining > 0)
+    span.setAttribute('faas.timeout_ms', Math.ceil(remaining / 1000) * 1000);
+}
+// Peak resident memory of the instance so far (maxRSS is in kilobytes). Close to Lambda's "Max Memory Used",
+// which also counts the extension, so slightly lower.
+function recordMemory(span) {
+  span.setAttribute(
+    'faas.memory_used_mb',
+    Math.round(process.resourceUsage().maxRSS / 1024),
+  );
+}
+
 // ---------- span naming + batch links ----------
-function requestHook(span, { event }) {
-  for (const step of [recordColdStart, recordEventSource, wrapConsole]) {
+function requestHook(span, { event, context: lambdaContext }) {
+  for (const step of [
+    recordColdStart,
+    recordEventSource,
+    wrapConsole,
+    recordTimeout,
+  ]) {
     try {
-      step(span, event);
+      step(span, event, lambdaContext);
     } catch {
       /* never break the invocation */
     }
@@ -199,6 +223,11 @@ function requestHook(span, { event }) {
   }
 }
 function responseHook(span, { res }) {
+  try {
+    recordMemory(span);
+  } catch {
+    /* never break the invocation */
+  }
   if (res && typeof res.statusCode === 'number')
     span.setAttributes({
       'http.response.status_code': res.statusCode,
