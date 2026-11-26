@@ -67,6 +67,23 @@ if [ -f "$COLLECTOR_DIR/config.e2e.yaml" ]; then
 	cp "$COLLECTOR_DIR/config.e2e.yaml" "$WORKSPACE_DIR/collector-config/"
 fi
 
+echo "Step 3b: Adding Logz.io hooks and wrapper..."
+# Hooks: route naming for API Gateway spans and trace propagation across EventBridge, Kinesis, IoT and SQS batches.
+LOGZIO_DIR="$SCRIPT_DIR/logzio"
+mkdir -p "$WORKSPACE_DIR/nodejs"
+cp "$LOGZIO_DIR/logzio-otel-hooks.cjs" "$WORKSPACE_DIR/nodejs/"
+# The hooks load before the SDK, so they need their own copy of the OpenTelemetry API (shared global registry).
+mkdir -p "$WORKSPACE_DIR/nodejs/node_modules/@opentelemetry"
+cp -R "$SCRIPT_DIR/../../node_modules/@opentelemetry/api" "$WORKSPACE_DIR/nodejs/node_modules/@opentelemetry/"
+# Wrapper: loads the hooks, then the OpenTelemetry SDK; sets Logz.io defaults.
+cp "$LOGZIO_DIR/otel-handler" "$WORKSPACE_DIR/otel-handler"
+chmod +x "$WORKSPACE_DIR/otel-handler"
+# Gateway mode config (traces and logs to a Logz.io gateway collector that adds APM metrics).
+if [ -f "$COLLECTOR_DIR/config.gateway.yaml" ]; then
+	cp "$COLLECTOR_DIR/config.gateway.yaml" "$WORKSPACE_DIR/collector-config/config.gateway.yaml"
+	cp "$COLLECTOR_DIR/config.gateway-traces.yaml" "$WORKSPACE_DIR/collector-config/config.gateway-traces.yaml"
+fi
+
 echo "Step 4: Creating build metadata..."
 cat > "$WORKSPACE_DIR/build-info.txt" << EOF
 Combined Node.js extension layer (built from local source)

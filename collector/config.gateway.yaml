@@ -1,0 +1,49 @@
+# Logz.io gateway mode: set OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.gateway.yaml
+# Sends traces and logs to the Logz.io gateway collector, which adds APM metrics and forwards to Logz.io.
+# Cold starts are recorded by the Logz.io hooks inside the first invocation's trace.
+# Logs: console output during an invocation arrives over OTLP from the Logz.io hooks, with trace and span IDs.
+# The Telemetry API still supplies platform records and function output written outside an invocation
+# (init, crashes); function lines written inside an invocation are dropped here so they are not sent twice,
+# and so are Lambda's per-invocation START and END lines.
+# Traces only (keep your own log shipping): use config.gateway-traces.yaml instead.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "localhost:4317"
+      http:
+        endpoint: "localhost:4318"
+  telemetryapireceiver:
+    types: ["platform", "function"]
+
+processors:
+  batch:
+  filter/invocation-output:
+    error_mode: ignore
+    logs:
+      log_record:
+        # Runtime line format: "<timestamp>\t<request id>\t<LEVEL>\t<message>"; init lines carry "undefined".
+        - 'attributes["type"] == "function" and IsMatch(body, "^\\S+\\t[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\t")'
+        # Lambda's START and END lines, one pair per invocation: high volume, no information beyond the trace.
+        - 'attributes["type"] == "platform.start" or attributes["type"] == "platform.runtimeDone"'
+
+exporters:
+  otlphttp:
+    endpoint: "${env:LOGZIO_GATEWAY_ENDPOINT}"
+    headers:
+      Authorization: "Bearer ${env:LOGZIO_GATEWAY_TOKEN}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp]
+    logs/telemetryapi:
+      receivers: [telemetryapireceiver]
+      processors: [filter/invocation-output, batch]
+      exporters: [otlphttp]

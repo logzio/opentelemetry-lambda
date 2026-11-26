@@ -1,0 +1,26 @@
+# Logz.io gateway mode, traces only: set OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.gateway-traces.yaml
+# For functions whose logs already reach Logz.io another way. Sends traces to the Logz.io gateway collector,
+# which adds APM metrics and forwards to Logz.io. Set OTEL_LOGS_EXPORTER=none so the SDK sends no logs either.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "localhost:4317"
+      http:
+        endpoint: "localhost:4318"
+
+processors:
+  batch:
+
+exporters:
+  otlphttp:
+    endpoint: "${env:LOGZIO_GATEWAY_ENDPOINT}"
+    headers:
+      Authorization: "Bearer ${env:LOGZIO_GATEWAY_TOKEN}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp]
