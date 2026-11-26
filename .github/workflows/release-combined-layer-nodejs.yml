@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: 'nodejs/.nvmrc'
 
       - uses: actions/setup-go@v5
         with:

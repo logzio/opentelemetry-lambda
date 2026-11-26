@@ -53,8 +53,10 @@ Most combined layers support these common environment variables:
 - **Logz.io hooks** (`/opt/nodejs/logzio-otel-hooks.cjs`, loaded automatically by `/opt/otel-handler`):
   - API Gateway spans are named by route (`GET /orders/{id}`) and get `http.route`, `http.request.method`, `faas.trigger` and the response status code (both current and legacy attribute names).
   - Cold starts appear inside the first request's trace: a `cold start` child span (process start to handler call) and `faas.init_duration_ms` on the invocation span. Skipped for provisioned concurrency.
+  - Invocations triggered by Kinesis, SQS, SNS or DynamoDB Streams get `messaging.system` and `messaging.destination.name`, so APM shows the stream, queue or topic as a dependency.
+  - Console output during an invocation is also sent as OpenTelemetry logs carrying the trace and span IDs, flushed with the spans at the end of the invocation.
   - Trace context crosses services AWS does not propagate: a `_logzio_trace` field is added to JSON payloads sent with EventBridge `PutEvents`, Kinesis `PutRecord`/`PutRecords` and IoT `Publish` (non-JSON payloads are left untouched). The receiving function continues that trace, and links every record of a Kinesis/SQS batch. Set `LOGZIO_PROPAGATION=off` to disable.
-- **Defaults set by the wrapper:** `OTEL_NODE_ENABLED_INSTRUMENTATIONS` includes `undici` (Node's built-in `fetch`); SDK metrics and logs exporters are off (function logs are shipped by the collector).
+- **Defaults set by the wrapper:** `OTEL_NODE_ENABLED_INSTRUMENTATIONS` includes `undici` (Node's built-in `fetch`); traces and logs exporters are `otlp`, the SDK metrics exporter is off. In gateway mode the collector drops Telemetry API copies of lines written inside an invocation (they arrive over OTLP with trace IDs) and keeps platform records and output written outside an invocation.
 - **Gateway mode (APM service pages):** set `OPENTELEMETRY_COLLECTOR_CONFIG_URI=/opt/collector-config/config.gateway.yaml`, `LOGZIO_GATEWAY_ENDPOINT` and `LOGZIO_GATEWAY_TOKEN`. Traces and logs go to a Logz.io gateway collector, which computes APM span metrics and forwards to Logz.io.
 - **ESM and CommonJS support:** Works with both module systems
 - **Instrumentation control:**

@@ -2,14 +2,18 @@
 // Loaded with NODE_OPTIONS=--require /opt/nodejs/logzio-otel-hooks.cjs, before the OpenTelemetry layer starts.
 //
 // 1. Names API Gateway spans by route and adds HTTP attributes APM reads.
-// 3. Cold starts: the first invocation of a new Lambda instance gets a `cold start` child span covering
-//    the time from process start to the handler call, and `faas.init_duration_ms` on the invocation span.
 // 2. Carries trace context across services AWS does not propagate for us:
 //    - sending side: adds a `_logzio_trace` field to JSON payloads sent with
 //      EventBridge PutEvents, Kinesis PutRecord(s) and IoT Publish. Non-JSON payloads are left untouched.
 //      Set LOGZIO_PROPAGATION=off to disable.
 //    - receiving side: the invocation continues the first record's trace, and links to every
 //      record's trace in a batch (Kinesis, SQS, EventBridge).
+// 3. Cold starts: the first invocation of a new Lambda instance gets a `cold start` child span covering
+//    the time from process start to the handler call, and `faas.init_duration_ms` on the invocation span.
+// 4. Event sources: invocations triggered by Kinesis, SQS, SNS or DynamoDB Streams get messaging.system and
+//    messaging.destination.name (stream, queue or topic), so APM shows the trigger as a dependency.
+// 5. Logs: console output during an invocation is also sent as OpenTelemetry logs carrying the trace and
+//    span IDs, and flushed together with the spans when the invocation ends.
 const {
   propagation,
   context,
@@ -17,6 +21,7 @@ const {
   ROOT_CONTEXT,
 } = require('@opentelemetry/api');
 const { performance } = require('perf_hooks');
+const { format } = require('util');
 
 const FIELD = '_logzio_trace';
 const ENABLED = (process.env.LOGZIO_PROPAGATION || 'on') !== 'off';
@@ -72,24 +77,98 @@ function recordColdStart(span) {
   const end = Date.now(); // handler is about to run
   const ms = Math.round(end - start);
   if (!(ms > 0 && ms < 15 * 60 * 1000)) return;
-  span.setAttributes({ 'faas.coldstart': true, 'faas.init_duration_ms': ms });
+  span.setAttribute('faas.init_duration_ms', ms); // faas.coldstart is set by the aws-lambda instrumentation
   const init = trace.getTracer('logzio-lambda').startSpan(
     'cold start',
     {
       startTime: start,
-      attributes: { 'faas.coldstart': true, 'faas.init_duration_ms': ms },
+      attributes: { 'faas.init_duration_ms': ms },
     },
     trace.setSpan(context.active(), span),
   );
   init.end(end);
 }
 
+// ---------- event source ----------
+// Names the stream, queue or topic that triggered the invocation, so APM shows it as a dependency
+// of the consumer (the trigger itself sends no spans).
+const SOURCES = {
+  'aws:kinesis': ['aws_kinesis', arn => arn.split(':stream/')[1]],
+  'aws:sqs': ['aws_sqs', arn => arn.split(':').pop()],
+  'aws:sns': ['aws_sns', arn => arn.split(':').pop()],
+  'aws:dynamodb': [
+    'aws_dynamodb_streams',
+    arn => arn.split(':table/')[1]?.split('/')[0],
+  ],
+};
+function recordEventSource(span, event) {
+  const r = event?.Records?.[0];
+  const src = SOURCES[r?.eventSource || r?.EventSource];
+  if (!src) return;
+  const arn = r.eventSourceARN || r.EventSubscriptionArn || '';
+  const name = arn && src[1](arn);
+  span.setAttributes({
+    'faas.trigger': 'pubsub',
+    'messaging.system': src[0],
+    'messaging.operation.type': 'process',
+    ...(name ? { 'messaging.destination.name': name } : {}),
+  });
+}
+
+// ---------- logs ----------
+// The Lambda runtime replaces console methods at startup, so they are wrapped on the first invocation.
+// Each call still prints as before; it is also emitted as a log record in the active trace context.
+const LEVELS = {
+  trace: ['TRACE', 1],
+  debug: ['DEBUG', 5],
+  log: ['INFO', 9],
+  info: ['INFO', 9],
+  warn: ['WARN', 13],
+  error: ['ERROR', 17],
+};
+let loggerProvider;
+let otelLogger;
+let consoleWrapped = false;
+function wrapConsole() {
+  if (consoleWrapped || !loggerProvider) return;
+  consoleWrapped = true;
+  otelLogger = loggerProvider.getLogger('logzio-lambda-console');
+  for (const [method, [severityText, severityNumber]] of Object.entries(
+    LEVELS,
+  )) {
+    const original = console[method];
+    if (typeof original !== 'function') continue;
+    console[method] = function (...args) {
+      original.apply(this, args);
+      try {
+        otelLogger.emit({
+          severityText,
+          severityNumber,
+          body: format(...args),
+          context: context.active(),
+        });
+      } catch {
+        /* logging must never break the function */
+      }
+    };
+  }
+}
+// A span processor whose only job is to flush logs whenever spans are flushed (end of every invocation).
+const flushLogsWithSpans = {
+  onStart() {},
+  onEnd() {},
+  forceFlush: () => loggerProvider?.forceFlush() ?? Promise.resolve(),
+  shutdown: () => loggerProvider?.shutdown() ?? Promise.resolve(),
+};
+
 // ---------- span naming + batch links ----------
 function requestHook(span, { event }) {
-  try {
-    recordColdStart(span);
-  } catch {
-    /* never break the invocation */
+  for (const step of [recordColdStart, recordEventSource, wrapConsole]) {
+    try {
+      step(span, event);
+    } catch {
+      /* never break the invocation */
+    }
   }
   const method = event?.httpMethod || event?.requestContext?.http?.method;
   const route = event?.resource || event?.routeKey?.split(' ')[1];
@@ -190,3 +269,11 @@ globalThis.configureLambdaInstrumentation = cfg => ({
   responseHook,
 });
 globalThis.configureAwsInstrumentation = cfg => ({ ...cfg, preRequestHook });
+globalThis.configureTracer = cfg => ({
+  ...cfg,
+  spanProcessors: [...(cfg.spanProcessors || []), flushLogsWithSpans],
+});
+// Called by the layer with its logger provider (only when OTEL_LOGS_EXPORTER is not "none").
+globalThis.configureLoggerProvider = provider => {
+  loggerProvider = provider;
+};

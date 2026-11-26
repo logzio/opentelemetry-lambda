@@ -73,8 +73,8 @@ LOGZIO_DIR="$SCRIPT_DIR/logzio"
 mkdir -p "$WORKSPACE_DIR/nodejs"
 cp "$LOGZIO_DIR/logzio-otel-hooks.cjs" "$WORKSPACE_DIR/nodejs/"
 # The hooks load before the SDK, so they need their own copy of the OpenTelemetry API (shared global registry).
-npm install --no-save --no-package-lock --omit=dev --prefix "$WORKSPACE_DIR/nodejs" @opentelemetry/api@1.9.0
-rm -f "$WORKSPACE_DIR/nodejs/package.json"
+mkdir -p "$WORKSPACE_DIR/nodejs/node_modules/@opentelemetry"
+cp -R "$SCRIPT_DIR/../../node_modules/@opentelemetry/api" "$WORKSPACE_DIR/nodejs/node_modules/@opentelemetry/"
 # Wrapper: loads the hooks, then the OpenTelemetry SDK; sets Logz.io defaults.
 cp "$LOGZIO_DIR/otel-handler" "$WORKSPACE_DIR/otel-handler"
 chmod +x "$WORKSPACE_DIR/otel-handler"
