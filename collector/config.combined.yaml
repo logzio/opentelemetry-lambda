@@ -29,7 +29,17 @@ processors:
         action: delete
       - key: process.tags
         action: delete
-  
+  # Console output during an invocation arrives over OTLP from the Logz.io hooks, with trace and span IDs.
+  # Drop the Telemetry API copy of those lines so they are not sent twice, and Lambda's per-invocation
+  # START and END lines. Platform records and output written outside an invocation (init, crashes) are kept.
+  filter/invocation-output:
+    error_mode: ignore
+    logs:
+      log_record:
+        # Runtime line format: "<timestamp>\t<request id>\t<LEVEL>\t<message>"; init lines carry "undefined".
+        - 'attributes["type"] == "function" and IsMatch(body, "^\\S+\\t[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\t")'
+        - 'attributes["type"] == "platform.start" or attributes["type"] == "platform.runtimeDone"'
+
 exporters:
   logzio/logs:
     account_token: "${env:LOGZIO_LOGS_TOKEN}"
@@ -60,8 +70,12 @@ service:
       processors: [batch]
       exporters: [prometheusremotewrite]
     logs:
-      receivers: [telemetryapireceiver]
+      receivers: [otlp]
       processors: [batch]
+      exporters: [logzio/logs]
+    logs/telemetryapi:
+      receivers: [telemetryapireceiver]
+      processors: [filter/invocation-output, batch]
       exporters: [logzio/logs]
   telemetry:
     logs:

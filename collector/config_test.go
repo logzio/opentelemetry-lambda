@@ -33,11 +33,15 @@ import (
 func TestShippedConfigsAreValid(t *testing.T) {
 	t.Setenv("LOGZIO_GATEWAY_ENDPOINT", "https://gateway.example.com")
 	t.Setenv("LOGZIO_GATEWAY_TOKEN", "test-token")
+	t.Setenv("LOGZIO_TRACES_TOKEN", "test-token")
+	t.Setenv("LOGZIO_LOGS_TOKEN", "test-token")
+	t.Setenv("LOGZIO_METRICS_TOKEN", "test-token")
+	t.Setenv("LOGZIO_REGION", "us")
 
 	factories, err := lambdacomponents.Components("collector")
 	require.NoError(t, err)
 
-	for _, file := range []string{"config.gateway.yaml", "config.gateway-traces.yaml"} {
+	for _, file := range []string{"config.combined.yaml", "config.gateway.yaml", "config.gateway-traces.yaml"} {
 		t.Run(file, func(t *testing.T) {
 			provider, err := otelcol.NewConfigProvider(otelcol.ConfigProviderSettings{
 				ResolverSettings: confmap.ResolverSettings{
